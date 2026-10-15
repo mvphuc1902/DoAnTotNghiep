@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ERP Enterprise</title>
+  <script src="auth.js?v=workspace-1"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    html:not([data-authenticated]) body { visibility: hidden; }
+    html:not([data-role="ADMIN"]) .admin-only, html:not([data-dashboard="true"]) .dashboard-only, html:not([data-delete="true"]) .delete-only { display: none !important; }
+    body { font-family: 'Inter', sans-serif; }
+    .nav-btn.active {
+      background-color: #4f46e5;
+      color: #ffffff;
+      font-weight: 600;
+    }
+    /* Compact navigation and workspace; full record fields remain in the detail dialog. */
+    body > aside > div:first-child > div:first-child { padding: 0 16px; height: 56px; flex-shrink: 0; }
+    body > aside h1 { font-size: 14px; }
+    header { height: 56px !important; padding: 0 20px !important; }
+    main { padding: 20px !important; }
+    #erp-navigation { padding: 8px; }
+    #erp-navigation .nav-btn { font-size: 12px; padding: 7px 10px; }
+    #erp-navigation details .nav-btn { padding-left: 22px; }
+    #erp-navigation summary { list-style-position: inside; }
+    #tab-data { gap: 12px; }
+    #tab-data > * + * { margin-top: 12px; }
+    #tab-data table { font-size: 12px; }
+    #tab-data th, #tab-data td { padding: 9px 12px; }
+    #tab-data td button { padding: 4px 8px; font-size: 12px; }
+    #tab-data td button + button { margin-left: 4px; }
+    #tab-data h2 { font-size: 18px; }
+    #tab-data input, #tab-data select, #tab-data button { font-size: 12px; }
+  </style>
+  <link rel="stylesheet" href="profiles.css?v=20260928-1">
+  <link rel="stylesheet" href="hr.css?v=hr-feed-2">
+  <link rel="stylesheet" href="document-form.css?v=explicit-toggle-all-2">
+  <link rel="stylesheet" href="workspace.css?v=lookup-spacing-1">
+  <script src="workspace-ui.js?v=redesign-2"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 flex h-screen overflow-hidden">
+
+  <!-- 1. LEFT SIDEBAR NAVIGATION -->
+  <aside id="workspace-navigation" class="w-60 bg-slate-900 text-slate-300 flex flex-col justify-between shrink-0">
+    <div class="flex flex-col flex-1 min-h-0">
+      <!-- Brand Logo -->
+      <div class="h-16 flex items-center px-6 gap-3 border-b border-slate-800">
+        <div class="brand-mark w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-indigo-500/30">
+          E
+        </div>
+        <div>
+          <h1 class="font-bold text-white text-base leading-none">ERP Enterprise</h1><p class="brand-caption">Business workspace</p>
+        </div>
+      </div>
+
+      <!-- Navigation Links (CÁC NÚT ĐƯỢC KHOANH ĐỎ) -->
+      <div class="px-3 pt-3 space-y-2">
+        <p id="erp-table-count" class="text-xs text-slate-400">Đang tải danh mục…</p>
+        <input id="erp-table-search" type="search" placeholder="Tìm danh mục…" aria-label="Tìm danh mục" class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm text-slate-100 border border-slate-700">
+      </div>
+      <nav id="erp-navigation" aria-label="Danh mục quản lý" class="p-3 space-y-1 overflow-y-auto flex-1 min-h-0">
+        <button onclick="switchTab('dashboard')" id="nav-dashboard" class="dashboard-only nav-btn w-full text-left px-3 py-2 rounded-lg">Dashboard</button>
+        <button onclick="switchTab('customers')" id="nav-customers" class="nav-btn active w-full text-left px-3 py-2 rounded-lg">Customers</button>
+      </nav>
+    </div>
+
+    <button id="logout-button" onclick="logout()" class="mx-3 mb-2 px-3 py-2 text-left text-sm rounded-lg hover:bg-slate-800">Đăng xuất</button>
+    <!-- User Profile Footer -->
+    <div class="p-3 border-t border-slate-800">
+      <div class="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-800/50">
+        <span role="img" aria-label="ERP" class="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white text-[10px] font-bold tracking-wide flex items-center justify-center shadow-sm">ERP</span>
+        <div class="truncate">
+          <p id="session-name" class="text-xs font-semibold text-slate-200">Account</p>
+          <p id="session-department" class="text-[10px] leading-4 text-slate-400 whitespace-normal break-words mt-0.5"></p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 2. MAIN CONTENT AREA -->
+  <button id="navigation-scrim" type="button" aria-label="Đóng điều hướng"></button>
+  <div class="workspace-shell flex-1 flex flex-col min-w-0 overflow-hidden">
+
+    <!-- Top App Bar -->
+    <header class="workspace-topbar h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
+      <button id="navigation-toggle" type="button" aria-label="Mở điều hướng" aria-controls="workspace-navigation" aria-expanded="false">☰</button><div class="workspace-search relative w-96">
+        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+        <input type="text" id="erp-global-search" placeholder="Tìm dữ liệu trong bảng đang xem..." 
+               class="w-full pl-9 pr-4 py-2 bg-slate-100 border-none rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition">
+      </div>
+
+      <div class="flex items-center gap-3">
+          <button id="notification-bell" type="button" aria-label="Thông báo" aria-haspopup="dialog" aria-expanded="false" aria-controls="notification-dialog" class="relative p-2 text-slate-500 hover:bg-slate-100 rounded-lg transition">
+          <i class="fa-solid fa-bell"></i>
+          <span id="notification-count" class="notification-count" hidden></span>
+        </button>
+        <span class="workspace-label">Không gian làm việc</span>
+      </div>
+    </header>
+
+    <!-- Workspace Views (Chuyển đổi theo Tab) -->
+    <main class="flex-1 overflow-y-auto p-6">
+
+<section id="tab-dashboard" class="tab-content hidden space-y-6"></section>
+      <!-- SECTION 2: CUSTOMERS (MẶC ĐỊNH HIỂN THỊ) -->
+      <div id="tab-customers" class="tab-content flex gap-6">
+        <div class="flex-1 flex flex-col gap-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-xl font-bold text-slate-900">Khách hàng</h2>
+              <p class="text-xs text-slate-500">Danh sách và thông tin chi tiết đối tác kinh doanh</p>
+            </div>
+            <div class="flex gap-2">
+              
+              <button onclick="openCustomerForm()" class="bg-indigo-600 text-white text-xs font-medium px-3.5 py-1.5 rounded-lg hover:bg-indigo-700 transition">
+                <i class="fa-solid fa-plus mr-1"></i> Thêm khách hàng
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-4">
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p class="text-xs font-medium text-slate-500">Tổng số khách hàng</p>
+                <h3 id="customer-count" class="text-2xl font-bold text-slate-800 mt-1">—</h3>
+              </div>
+              <div class="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+                <i class="fa-solid fa-users"></i>
+              </div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p class="text-xs font-medium text-slate-500">Tổng chứng từ bán</p>
+                <h3 class="text-2xl font-bold text-slate-800 mt-1" id="erp-order-count">—</h3>
+              </div>
+              <div class="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center">
+                <i class="fa-solid fa-clock"></i>
+              </div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p class="text-xs font-medium text-slate-500">Tổng hóa đơn bán</p>
+                <h3 class="text-2xl font-bold text-slate-800 mt-1" id="erp-invoice-count">—</h3>
+              </div>
+              <div class="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
+                <i class="fa-solid fa-wallet"></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-100 text-[11px] font-semibold text-slate-500 uppercase">
+                  <th class="py-3 px-4">Mã KH</th>
+                  <th class="py-3 px-4">Tên Khách Hàng</th>
+                  <th class="py-3 px-4">Địa Chỉ</th>
+                  <th class="py-3 px-4">Số Điện Thoại</th>
+                  <th class="py-3 px-4">Trạng Thái</th>
+                  <th class="py-3 px-4 text-right">Thao Tác</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 text-xs"></tbody>
+            </table>
+          </div>
+        </div>
+
+<aside id="customer-detail" aria-live="polite" class="w-80 bg-white rounded-xl border border-slate-200 p-4 shadow-sm shrink-0 self-start"><h4 class="font-bold mb-3">Chi tiết khách hàng</h4><p class="text-sm text-slate-500">Chọn một khách hàng trong bảng để xem chi tiết.</p></aside>
+      </div>
+
+<section id="tab-data" class="tab-content hidden space-y-5"></section>
+<section id="tab-hr" class="tab-content hidden" aria-live="polite"></section>
+    </main><dialog id="erp-detail-dialog" aria-labelledby="erp-detail-title" class="rounded-xl p-6 w-[min(900px,95vw)] max-h-[85vh] overflow-auto shadow-xl backdrop:bg-slate-900/50"></dialog>
+  </div>
+
+  <!-- 3. JAVASCRIPT ĐIỀU KHIỂN CHUYỂN TAB TỰ ĐỘNG -->
+  <script>
+   function switchTab(tabName) {
+    if(currentUser?.role==='HR' && tabName!=='hr')return;
+    if (tabName === 'dashboard' && !canViewDashboard()) return;
+    const allTabs = document.querySelectorAll('.tab-content');
+    allTabs.forEach(tab => tab.classList.add('hidden'));
+
+    const allNavBtns = document.querySelectorAll('.nav-btn');
+    allNavBtns.forEach(btn => btn.classList.remove('active'));
+
+    const selectedTab = document.getElementById('tab-' + tabName);
+    if (selectedTab) {
+      selectedTab.classList.remove('hidden');
+    }
+
+    const selectedNavBtn = document.getElementById('nav-' + tabName);
+    if (selectedNavBtn) {
+      selectedNavBtn.classList.add('active');
+    }
+
+    if (typeof syncErpNavigation === 'function') syncErpNavigation();
+    if (tabName === 'dashboard' && typeof renderErpDashboard === 'function') renderErpDashboard();
+    // Tự động gọi API lấy dữ liệu khi bấm vào tab Customers
+    if (tabName === 'customers') {
+      loadCustomersFromDatabase();
+    }
+  }
+
+  </script>
+  <dialog id="customer-dialog" aria-labelledby="customer-form-title" class="rounded-xl p-6 w-full max-w-xl shadow-xl backdrop:bg-slate-900/50">
+    <form id="customer-form" class="space-y-4">
+      <div class="flex justify-between items-center"><h2 id="customer-form-title" class="text-xl font-bold">Đăng ký khách hàng</h2><button type="button" onclick="closeCustomerForm()" aria-label="Đóng" class="text-xl px-2">×</button></div>
+      <p class="text-sm text-slate-500">Các trường có dấu * là bắt buộc.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" id="customer-fields"></div>
+      <label class="flex gap-2 text-sm"><input type="checkbox" name="blocked"> Tạm khóa khách hàng</label>
+      <p id="customer-form-error" role="alert" class="text-sm text-rose-600"></p>
+      <div class="flex justify-end gap-3"><button type="button" onclick="closeCustomerForm()" class="px-4 py-2 border rounded-lg">Hủy</button><button id="customer-save" class="px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50" type="submit">Lưu khách hàng</button></div>
+    </form>
+  </dialog>
+  <p id="customer-notice" role="status" class="fixed bottom-5 right-5 bg-slate-900 text-white rounded-lg px-4 py-3 shadow-lg hidden"></p>
+  <script src="profiles.js?v=roles-2"></script>
+  <script src="lookup.js?v=form-audit-1"></script>
+  <script src="document-form.js?v=explicit-toggle-all-2"></script>
+  <script src="customers.js?v=redesign-2"></script>
+<script src="erp.js?v=sales-form-titles-1"></script>
+<script src="sales-document.js?v=sales-line-vat-label-1"></script>
+<script src="purchase-document.js?v=purchase-unit-3"></script>
+<script src="bom-document.js?v=lookup-1"></script>
+<script src="sales-form.js?v=sales-hidden-fields-1"></script>
+<script src="item-card.js?v=1"></script><script src="erp-crud.js?v=sales-form-titles-1"></script>
+<script src="hr.js?v=payroll-copy-1"></script>
+<script src="payroll-batch.js?v=payroll-batch-1"></script>
+<script src="hr-image.js?v=hr-images-3"></script>
+<script src="recruitment.js?v=redesign-2"></script>
+<script src="hr-workspace.js?v=redesign-2"></script>
+<script src="hr-feed.js?v=redesign-2"></script>
+<script src="notifications.js?v=hr-feed-1"></script>
+</body>
+</html>

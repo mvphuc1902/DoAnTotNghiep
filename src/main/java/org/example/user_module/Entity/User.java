@@ -29,6 +29,7 @@ public class User {
     private  int id;
     private String name;
     private String email;
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     private String password;
     private String phone;
 }

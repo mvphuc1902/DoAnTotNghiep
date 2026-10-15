@@ -37,3 +37,6 @@ build/
 
 ### Mac OS ###
 .DS_Store
+# Local SMTP credential (created by scripts/configure-mail.ps1)
+/config/mail-local.properties
+/.local-runtime/

@@ -1,0 +1,53 @@
+.hr-heading,.hr-toolbar,.hr-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.hr-heading { margin-bottom:18px; }
+.hr-heading h2 { font-size:23px; font-weight:700; }
+.hr-subtitle { color:#64748b; font-size:12px; margin-top:6px; max-width:760px; }
+.hr-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:16px 0; }
+.hr-stat { background:white; border:1px solid #e2e8f0; border-radius:12px; padding:16px; }
+.hr-stat strong { display:block; font-size:22px; color:#4338ca; margin-top:7px; }
+.hr-stat span { font-size:12px; color:#64748b; }
+.hr-toolbar { margin:16px 0; justify-content:flex-start; }
+.hr-input { border:1px solid #cbd5e1; border-radius:8px; padding:9px 11px; background:white; width:100%; font-size:13px; color:#0f172a; }
+.hr-input:focus { outline:2px solid #a5b4fc; outline-offset:1px; }
+.hr-toolbar .hr-input { width:auto; max-width:100%; }
+.hr-table-wrap { overflow:auto; background:white; border:1px solid #e2e8f0; border-radius:12px; }
+.hr-table { width:100%; font-size:12px; border-collapse:collapse; white-space:nowrap; }
+.hr-table th { text-align:left; background:#f1f5f9; color:#475569; }
+.hr-table td,.hr-table th { padding:12px 15px; border-bottom:1px solid #f1f5f9; }
+.hr-table tbody tr:hover { background:#f8faff; }
+.hr-badge { display:inline-block; font-size:10px; font-weight:600; border-radius:20px; padding:4px 8px; background:#eef2ff; color:#4338ca; }
+.hr-badge[data-status="DONE"],.hr-badge[data-status="APPROVED"] { background:#dcfce7; color:#166534; }
+.hr-badge[data-status="REJECTED"],.hr-badge[data-status="URGENT"] { background:#ffe4e6; color:#9f1239; }
+.hr-badge[data-status="CANCELLED"] { background:#f1f5f9; color:#64748b; }
+.hr-dialog { padding:0; border:0; border-radius:16px; width:min(720px,94vw); max-height:90vh; box-shadow:0 20px 70px #0f172a40; }
+.hr-dialog::backdrop { background:#0f172a80; }
+.hr-form { padding:24px; }
+.hr-form h2 { font-size:20px; font-weight:700; }
+.hr-fields { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:20px 0; }
+.hr-field { display:flex; flex-direction:column; gap:6px; font-size:12px; font-weight:500; }
+.hr-field.wide { grid-column:1/-1; }
+.hr-field textarea { min-height:85px; resize:vertical; }
+.hr-input:disabled { background:#f1f5f9; color:#64748b; }
+.hr-formula { border-radius:10px; background:#eef2ff; padding:14px; font-size:12px; line-height:1.8; color:#3730a3; white-space:pre-line; }
+.hr-error { color:#be123c; font-size:13px; margin:12px 0; }
+.hr-empty { text-align:center; color:#64748b; padding:40px!important; }
+.hr-actions { justify-content:flex-end; margin-top:18px; }
+@media(max-width:700px) { .hr-fields { grid-template-columns:1fr; } .hr-summary { grid-template-columns:1fr; } }
+.recruitment-image{display:block;width:100%;max-height:480px;object-fit:contain;border-radius:12px;background:#f8fafc;margin:16px 0}
+.recruitment-preview{max-height:260px}
+.recruitment-image[hidden]{display:none}
+.notification-count{position:absolute;top:0;right:0;min-width:17px;height:17px;padding:0 3px;border-radius:9px;background:#e11d48;color:white;font-size:10px;line-height:17px;font-weight:700}
+.notification-count[hidden]{display:none}
+.notification-dialog{width:min(480px,94vw)}
+.notification-entry{display:flex;flex-direction:column;gap:5px;width:100%;text-align:left;padding:14px;margin-top:8px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;overflow-wrap:anywhere}
+.notification-entry.unread{background:#eef2ff;border-color:#a5b4fc}
+.notification-entry span,.notification-entry small{color:#64748b;font-size:12px}
+.hr-image-picker{padding:16px;border:2px dashed #a5b4fc;border-radius:12px;background:#f5f7ff;margin:12px 0}
+.hr-image-picker input[type=file]{display:block;width:100%;background:#fff}
+.hr-image-picker input[type=file]::file-selector-button{background:#4f46e5;color:white;border:0;border-radius:6px;padding:9px 14px;margin-right:12px;cursor:pointer}
+.hr-employee-delete{color:#be123c;border-color:#fda4af}
+.hr-post-type-choices{display:grid;gap:12px;margin:20px 0}
+.hr-post-type-choices button{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:8px;padding:18px;border:1px solid #c7d2fe;border-radius:12px;background:#f5f7ff;white-space:normal}
+.hr-post-type-choices strong{font-size:17px;color:#3730a3}
+.hr-post-type-choices span{font-size:13px;color:#64748b}
+.hr-post-type-choices button:hover{background:#e0e7ff}
