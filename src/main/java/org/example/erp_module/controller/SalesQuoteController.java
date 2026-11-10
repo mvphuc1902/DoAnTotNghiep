@@ -89,25 +89,6 @@ public class SalesQuoteController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ Sales Quotes mới có thể Make Order.");
         if (header.get("sales_order_id") != null) return Map.of("id", header.get("sales_order_id").toString());
         if (!Set.of("DRAFT","RELEASED").contains(header.get("status"))) throw new ResponseStatusException(HttpStatus.CONFLICT, "Báo giá không thể chuyển đơn.");
-        var shortages = jdbc.queryForList("""
-            SELECT i.item_no, w.code AS warehouse_code, requested.quantity AS requested_quantity,
-                   coalesce(stock.available_quantity,0) AS available_quantity
-            FROM (SELECT item_id,sum(quantity) AS quantity FROM sales_quote_lines
-                  WHERE sales_header_id=? GROUP BY item_id) requested
-            JOIN items i ON i.id=requested.item_id
-            JOIN locations w ON w.id=coalesce(?,erp_default_location())
-            LEFT JOIN inventory stock ON stock.item_id=requested.item_id AND stock.location_id=w.id
-            WHERE i.item_category='INVENTORY' AND requested.quantity>coalesce(stock.available_quantity,0)
-            ORDER BY i.item_no
-            """, id, header.get("location_id"));
-        if (!shortages.isEmpty()) {
-            String details = shortages.stream().map(row -> row.get("item_no") + " tại kho " + row.get("warehouse_code")
-                    + ": cần " + formatQuantity((BigDecimal) row.get("requested_quantity"))
-                    + ", còn " + formatQuantity((BigDecimal) row.get("available_quantity")))
-                    .collect(java.util.stream.Collectors.joining("; "));
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Không đủ tồn kho: " + details + ". Vui lòng nhập thêm hàng trước khi Make Order. Báo giá vẫn được giữ nguyên.");
-        }
         SalesOrder order = new SalesOrder();
         order.setOrderNo(null);
         order.setOrderDate(java.time.LocalDate.now());
@@ -160,7 +141,8 @@ public class SalesQuoteController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Chỉ Sales Quote mới có thể Make Invoice.");
         var previous=jdbc.queryForList("SELECT sales_invoice_id FROM sales_quote_invoice_links WHERE sales_header_id=?",Long.class,id);
         if(!previous.isEmpty())return Map.of("id",previous.getFirst().toString());
-        long orderId=Long.parseLong(makeOrder(id).get("id"));
+        if(header.getFirst().get("sales_order_id")==null) throw new ResponseStatusException(HttpStatus.CONFLICT,"Make Order, Release và Post Shipment trước khi tạo hóa đơn.");
+        long orderId=((Number)header.getFirst().get("sales_order_id")).longValue();
         var lines=jdbc.queryForList("SELECT id,quantity,vat_percent FROM sales_order_lines WHERE sales_order_id=? ORDER BY line_no",orderId)
             .stream().map(line->new ErpWriteController.SalesDocumentLineInput(((Number)line.get("id")).longValue(),
                 (BigDecimal)line.get("quantity"),(BigDecimal)line.get("vat_percent"))).toList();

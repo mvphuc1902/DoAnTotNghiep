@@ -38,9 +38,10 @@
   </style>
   <link rel="stylesheet" href="profiles.css?v=20260928-1">
   <link rel="stylesheet" href="hr.css?v=hr-feed-2">
-  <link rel="stylesheet" href="document-form.css?v=explicit-toggle-all-2">
+  <link rel="stylesheet" href="document-form.css?v=sales-line-layout-3">
   <link rel="stylesheet" href="workspace.css?v=lookup-spacing-1">
   <script src="workspace-ui.js?v=redesign-2"></script>
+<link rel="stylesheet" href="purchase-presentation.css?v=1">
 </head>
 <body class="bg-slate-50 text-slate-800 flex h-screen overflow-hidden">
 
@@ -210,7 +211,6 @@
   <dialog id="customer-dialog" aria-labelledby="customer-form-title" class="rounded-xl p-6 w-full max-w-xl shadow-xl backdrop:bg-slate-900/50">
     <form id="customer-form" class="space-y-4">
       <div class="flex justify-between items-center"><h2 id="customer-form-title" class="text-xl font-bold">Đăng ký khách hàng</h2><button type="button" onclick="closeCustomerForm()" aria-label="Đóng" class="text-xl px-2">×</button></div>
-      <p class="text-sm text-slate-500">Các trường có dấu * là bắt buộc.</p>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" id="customer-fields"></div>
       <label class="flex gap-2 text-sm"><input type="checkbox" name="blocked"> Tạm khóa khách hàng</label>
       <p id="customer-form-error" role="alert" class="text-sm text-rose-600"></p>
@@ -220,14 +220,18 @@
   <p id="customer-notice" role="status" class="fixed bottom-5 right-5 bg-slate-900 text-white rounded-lg px-4 py-3 shadow-lg hidden"></p>
   <script src="profiles.js?v=roles-2"></script>
   <script src="lookup.js?v=form-audit-1"></script>
-  <script src="document-form.js?v=explicit-toggle-all-2"></script>
+  <script src="document-form.js?v=explicit-toggle-all-3"></script>
   <script src="customers.js?v=redesign-2"></script>
-<script src="erp.js?v=sales-form-titles-1"></script>
-<script src="sales-document.js?v=sales-line-vat-label-1"></script>
-<script src="purchase-document.js?v=purchase-unit-3"></script>
-<script src="bom-document.js?v=lookup-1"></script>
-<script src="sales-form.js?v=sales-hidden-fields-1"></script>
-<script src="item-card.js?v=1"></script><script src="erp-crud.js?v=sales-form-titles-1"></script>
+<script src="erp.js?v=production-item-types-1"></script>
+<script src="sales-document.js?v=sales-audit-1"></script>
+<script src="purchase-presentation.js?v=sales-audit-1"></script>
+<script src="purchase-document.js?v=items-compact-all-7"></script>
+<script src="document-header.js?v=purchase-items-2"></script>
+<script src="purchase-workflow.js?v=sales-audit-1"></script>
+<script src="bom-document.js?v=production-item-types-4"></script>
+<script src="sales-workflow-ui.js?v=sales-audit-1"></script>
+<script src="sales-form.js?v=sales-audit-1"></script>
+<script src="item-card.js?v=1"></script><script src="erp-crud.js?v=production-item-types-4"></script>
 <script src="hr.js?v=payroll-copy-1"></script>
 <script src="payroll-batch.js?v=payroll-batch-1"></script>
 <script src="hr-image.js?v=hr-images-3"></script>

@@ -65,6 +65,7 @@ public class SalesOrderServiceImpl implements org.example.salesorder_module.serv
                 .orElseThrow(() ->
                         new RuntimeException("Customer not found"));
 
+        if (Boolean.TRUE.equals(customer.getBlocked())) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,"Khách hàng đang bị khóa.");
         order.setCustomer(customer);
 
         if (order.getLocation() != null &&
@@ -214,23 +215,22 @@ public class SalesOrderServiceImpl implements org.example.salesorder_module.serv
 
 private void calculateOrder(SalesOrder order) {
 
-    BigDecimal gross = BigDecimal.ZERO;      // Tổng trước VAT (chưa trừ CK)
+    BigDecimal subtotal = BigDecimal.ZERO;    // Tổng sau chiết khấu, trước VAT
     BigDecimal discount = BigDecimal.ZERO;   // Chiết khấu
     BigDecimal vat = BigDecimal.ZERO;        // Thuế VAT
 
     if (order.getLines() != null) {
         for (SalesOrderLine line : order.getLines()) {
-            // lineAmount = gross - discount nên gross = lineAmount + discountAmount
-            gross = gross.add(line.getLineAmount().add(line.getDiscountAmount()));
+            subtotal = subtotal.add(line.getLineAmount());
             discount = discount.add(line.getDiscountAmount());
             vat = vat.add(line.getVatAmount());
         }
     }
 
-    order.setSubtotal(gross);
+    order.setSubtotal(subtotal);
     order.setDiscountAmount(discount);
     order.setVatAmount(vat);
-    order.setTotalAmount(gross.subtract(discount).add(vat)); // Tổng thanh toán
+    order.setTotalAmount(subtotal.add(vat));
 }
 
     @Override

@@ -36,104 +36,255 @@ function salesSourceLineEditor(table, controls) {
   if (!['sales_invoices', 'sales_returns'].includes(table)) return null;
   const isInvoice = table === 'sales_invoices';
   const order = controls.get('sales_order_id');
-  const section = erpElement('section', null, 'sm:col-span-2 border-t pt-4 space-y-3');
+  const section = erpElement('details', null, 'document-section sales-document sales-source-lines');
+  section.open = true;
   section.dataset.salesSourceLines = 'true';
-  section.append(erpElement('h3', 'Sales Lines *', 'font-semibold'));
-  const help = erpElement('p', isInvoice
-    ? 'Chọn các dòng từ Sales Order để lập hóa đơn. Có thể lập hóa đơn một phần.'
-    : 'Chọn các dòng hàng từ Sales Order và nhập số lượng trả. Hàng chỉ vào tồn kho khi xác nhận nhận hàng.',
-  'text-sm text-slate-600');
-  section.append(help);
-  const status = erpElement('p', 'Chọn mã Sales Order để tải các dòng hàng.', 'text-sm text-slate-500');
+  section.append(erpElement('summary', 'Sales Lines'));
+  const tools = erpElement('div', null, 'sales-line-tools');
+  const category = erpElement('select');
+  category.setAttribute('aria-label', 'Loại Item');
+  [['', 'Tất cả loại Item'], ['INVENTORY', 'Inventory · Hàng tồn kho'],
+    ['SERVICE', 'Service · Dịch vụ'], ['NON_INVENTORY', 'Non-Inventory · Không quản lý tồn']]
+    .forEach(([value, label]) => {
+      const option = erpElement('option', label);
+      option.value = value;
+      category.append(option);
+    });
+  const search = erpElement('input');
+  search.type = 'search';
+  search.placeholder = 'Tìm mã hoặc tên trong Items…';
+  search.setAttribute('aria-label', 'Tìm Item trong bảng Items');
+  const picker = erpElement('select');
+  picker.setAttribute('aria-label', 'Chọn Item từ bảng Items');
+  const placeholder = erpElement('option', 'Tra cứu Item từ bảng Items…');
+  placeholder.value = '';
+  picker.append(placeholder);
+  const add = erpButton('+ Thêm dòng', () => {
+    const sourceId = picker.value.startsWith('line:') ? picker.value.slice(5) : '';
+    const source = sourceLines.find(line => String(line.id) === sourceId);
+    if (source && !rows.some(row => String(row.source.id) === String(source.id))) addLine(source);
+    picker.value = '';
+    picker.dispatchEvent(new Event('change', {bubbles: true}));
+  });
+  add.disabled = true;
+  tools.append(category, search, picker, add);
+  section.append(tools);
+  const status = erpElement('p', 'Chọn Sales Order rồi tìm Item trong bảng Items.', 'document-hint');
   status.setAttribute('role', 'status');
   section.append(status);
-  const tableWrap = erpElement('div', null, 'overflow-auto');
-  const tableElement = erpElement('table', null, 'min-w-full text-sm text-left');
+  const tableWrap = erpElement('div', null, 'sales-lines-scroll');
+  const tableElement = erpElement('table', null, 'sales-document');
   const head = erpElement('thead', null, 'bg-slate-100');
   const headerRow = erpElement('tr');
-  const captions = isInvoice
-    ? ['Chọn', 'Dòng', 'Item', 'Mô tả', 'SL đơn bán', 'SL hóa đơn', 'Đơn giá', 'CK %', 'VAT %']
-    : ['Chọn', 'Dòng', 'Item', 'Mô tả', 'SL đơn bán', 'SL trả'];
+  const captions = ['Vật tư', 'Location Code', 'Đơn vị', 'Số lượng', 'Đơn giá (VND)', 'CK %', 'VAT %',
+    'Thành tiền chưa VAT', 'Thành tiền (VAT)', ''];
   captions.forEach(caption => headerRow.append(erpElement('th', caption, 'p-2')));
   head.append(headerRow);
   const body = erpElement('tbody', null, 'divide-y');
   tableElement.append(head, body);
   tableWrap.append(tableElement);
   section.append(tableWrap);
+  const empty = erpElement('p', 'Chưa có Sales Lines. Tra cứu Item trong Sales Order rồi bấm Thêm dòng.', 'document-hint');
+  section.append(empty);
+  const totals = erpElement('dl', null, 'sales-totals');
+  const amounts = {};
+  [['net', 'Tổng trước VAT'], ['discount', 'Chiết khấu'], ['vat', 'Thuế VAT'], ['total', 'Tổng thanh toán (VND)']].forEach(([key, label]) => {
+    amounts[key] = erpElement('dd', '0 ₫');
+    totals.append(erpElement('dt', label), amounts[key]);
+  });
+  section.append(totals);
+  section.append(erpElement('p', isInvoice
+    ? 'Chọn dòng từ Sales Order để tính tổng hóa đơn. Số lượng không vượt phần còn lại của đơn bán.'
+    : 'Chọn dòng từ Sales Order để nhập hàng trả. Tồn kho chỉ được cập nhật khi xác nhận nhận hàng.',
+  'document-hint'));
   let rows = [];
+  let sourceLines = [];
+  let catalogItems = [];
   let requestVersion = 0;
-  async function load() {
+  const fixed = (value, scale) => {
+    const normalized = String(value ?? '0');
+    if (!/^\d+(\.\d+)?$/.test(normalized)) return 0n;
+    const [whole, fraction = ''] = normalized.split('.');
+    return BigInt(whole + fraction.padEnd(scale, '0').slice(0, scale));
+  };
+  const money = cents => erpDecimal(`${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`, true);
+  function updateTotals() {
+    let net = 0n, discountTotal = 0n, vatTotal = 0n;
+    rows.forEach(row => {
+      const quantity = row.quantity.value;
+      const gross = (fixed(quantity, 3) * fixed(row.source.unit_price, 2) + 500n) / 1000n;
+      const discount = (gross * fixed(row.source.discount_percent, 2) + 5000n) / 10000n;
+      const base = gross - discount;
+      const vatPercent = row.vat ? row.vat.value : String(row.source.vat_percent ?? '0');
+      const tax = (base * fixed(vatPercent, 2) + 5000n) / 10000n;
+      row.baseAmount.textContent = money(base);
+      row.amount.textContent = money(base + tax);
+      net += base; discountTotal += discount; vatTotal += tax;
+    });
+    amounts.net.textContent = money(net);
+    amounts.discount.textContent = money(discountTotal);
+    amounts.vat.textContent = money(vatTotal);
+    amounts.total.textContent = money(net + vatTotal);
+    empty.hidden = rows.length > 0;
+  }
+  function renderPicker(matches = sourceLines) {
+    picker.replaceChildren();
+    const prompt = erpElement('option', 'Chọn Item từ bảng Items…');
+    prompt.value = '';
+    picker.append(prompt);
+    catalogItems.forEach(item => {
+      const itemLines = matches.filter(line => String(line.item_id) === String(item.id));
+      if (!itemLines.length) {
+        const option = erpElement('option',
+          `${item.item_no || ''} · ${item.description || ''}${order?.value ? ' · Không có trong Sales Order' : ''}`);
+        option.value = `item:${item.id}`;
+        option.disabled = Boolean(order?.value);
+        picker.append(option);
+        return;
+      }
+      itemLines.forEach(line => {
+        const label = `${item.item_no || ''} · ${item.description || line.description || ''}`
+            + ` · Dòng ${line.line_no}${line.location_code ? ` · ${erpLocationCode(line.location_code)}` : ''}`;
+        const option = erpElement('option', label);
+        option.value = `line:${line.id}`;
+        option.disabled = rows.some(row => String(row.source.id) === String(line.id));
+        picker.append(option);
+      });
+    });
+    add.disabled = !picker.value || !picker.value.startsWith('line:')
+      || rows.some(row => `line:${row.source.id}` === picker.value);
+  }
+  function addLine(source) {
+    const tr = erpElement('tr');
+    const row = {source};
+    const itemCell = erpElement('td',
+      `${source.item_no || source.item_id || ''} · ${source.description || source.item_description || ''}`, 'p-2');
+    tr.append(itemCell, erpElement('td', erpLocationCode(source.location_code), 'p-2'),
+      erpElement('td', source.unit_of_measure || '', 'p-2'));
+    const quantityCell = erpElement('td', null, 'p-2');
+    const quantity = erpElement('input');
+    quantity.type = 'number'; quantity.min = '0.001'; quantity.step = '0.001';
+    quantity.max = String(source.quantity); quantity.value = String(source.quantity);
+    quantity.className = 'sales-line-quantity';
+    quantity.setAttribute('aria-label', `Số lượng ${isInvoice ? 'hóa đơn' : 'trả'} — ${source.description || source.item_id}`);
+    quantity.addEventListener('input', updateTotals);
+    quantityCell.append(quantity);
+    row.quantity = quantity;
+    tr.append(quantityCell, erpElement('td', erpPrice(source.unit_price ?? '0'), 'p-2'),
+      erpElement('td', erpValue(source.discount_percent ?? '0', 'discount_percent'), 'p-2'));
+    const vatCell = erpElement('td', null, 'p-2');
+    if (isInvoice) {
+      const vat = erpElement('input');
+      vat.type = 'number'; vat.min = '0'; vat.max = '100'; vat.step = '0.01';
+      vat.value = String(source.vat_percent ?? '0');
+      vat.className = 'sales-line-vat';
+      vat.setAttribute('aria-label', `VAT % — ${source.description || source.item_id}`);
+      vat.addEventListener('input', updateTotals);
+      vatCell.append(vat);
+      row.vat = vat;
+    } else vatCell.textContent = erpValue(source.vat_percent ?? '0', 'vat_percent');
+    tr.append(vatCell);
+    row.baseAmount = erpElement('td', '0 ₫', 'p-2');
+    row.amount = erpElement('td', '0 ₫', 'p-2');
+    tr.append(row.baseAmount, row.amount);
+    const removeCell = erpElement('td', null, 'p-2');
+    const remove = erpButton('Xóa', () => {
+      rows.splice(rows.indexOf(row), 1);
+      tr.remove();
+      updateTotals();
+      renderPicker();
+    });
+    remove.setAttribute('aria-label', `Xóa dòng ${source.description || source.item_no || ''}`);
+    removeCell.append(remove);
+    tr.append(removeCell);
+    rows.push(row);
+    body.append(tr);
+    updateTotals();
+    renderPicker();
+    quantity.focus();
+  }
+  picker.addEventListener('change', () => {
+    add.disabled = !picker.value || !picker.value.startsWith('line:')
+      || rows.some(row => `line:${row.source.id}` === picker.value);
+  });
+  let lookupTimer;
+  async function lookupItems() {
     const orderId = order?.value;
     const version = ++requestVersion;
-    rows = [];
-    body.replaceChildren();
-    if (!orderId) {
-      status.textContent = 'Chọn mã Sales Order để tải các dòng hàng.';
-      return;
-    }
-    status.textContent = 'Đang tải dòng Sales Order…';
+    catalogItems = [];
+    sourceLines = [];
+    picker.replaceChildren(placeholder.cloneNode(true));
+    add.disabled = true;
+    status.textContent = 'Đang tải danh sách từ bảng Items…';
     try {
-      const sourceLines = [];
-      let page = 0;
-      let total = 0;
-      do {
-        const query = new URLSearchParams({
-          page: String(page), size: '100', filterColumn: 'sales_order_id', filterValue: orderId
-        });
-        const result = await erpGet('/tables/sales_order_lines?' + query);
-        sourceLines.push(...result.rows);
-        total = result.total;
-        page++;
-      } while (sourceLines.length < total);
-      if (version !== requestVersion) return;
-      sourceLines.forEach(source => {
-        const tr = erpElement('tr');
-        const includeCell = erpElement('td', null, 'p-2');
-        const include = erpElement('input');
-        include.type = 'checkbox';
-        include.setAttribute('aria-label', `Chọn dòng ${source.line_no} ${source.description || ''}`);
-        includeCell.append(include);
-        tr.append(includeCell);
-        [source.line_no, source.item_id, source.description || '', erpValue(source.quantity, 'quantity')]
-          .forEach(value => tr.append(erpElement('td', value == null ? '' : String(value), 'p-2')));
-        const quantityCell = erpElement('td', null, 'p-2');
-        const quantity = erpElement('input');
-        quantity.type = 'number'; quantity.min = '0.001'; quantity.step = '0.001';
-        quantity.max = String(source.quantity); quantity.value = String(source.quantity);
-        quantity.className = 'w-28 border rounded px-2 py-1';
-        quantity.setAttribute('aria-label', `Số lượng ${isInvoice ? 'hóa đơn' : 'trả'} — ${source.description || source.item_id}`);
-        quantityCell.append(quantity);
-        tr.append(quantityCell);
-        const row = {source, include, quantity};
-        if (isInvoice) {
-          tr.append(erpElement('td', erpPrice(source.unit_price), 'p-2'));
-          tr.append(erpElement('td', erpValue(source.discount_percent, 'discount_percent'), 'p-2'));
-          const vatCell = erpElement('td', null, 'p-2');
-          const vat = erpElement('input');
-          vat.type = 'number'; vat.min = '0'; vat.max = '100'; vat.step = '0.01';
-          vat.value = String(source.vat_percent ?? '0');
-          vat.className = 'w-24 border rounded px-2 py-1';
-          vat.setAttribute('aria-label', `VAT % — ${source.description || source.item_id}`);
-          vatCell.append(vat);
-          tr.append(vatCell);
-          row.vat = vat;
-        }
-        rows.push(row);
-        body.append(tr);
+      const itemQuery = new URLSearchParams({
+        page: '0', size: '100', search: search.value.trim()
       });
-      status.textContent = total ? `${total} dòng Sales Order. Chọn các dòng cần đưa vào chứng từ.` : 'Sales Order này chưa có dòng hàng.';
+      if (category.value) {
+        itemQuery.set('filterColumn', 'item_category');
+        itemQuery.set('filterValue', category.value);
+      }
+      const itemResult = await erpGet('/tables/items?' + itemQuery);
+      if (version !== requestVersion) return;
+      catalogItems = itemResult.rows.filter(item => !item.blocked);
+      if (orderId) {
+        status.textContent = 'Đang liên kết Item với Sales Order…';
+        const orderQuery = new URLSearchParams({orderId});
+        const orderResult = await erpGet('/sales-form/order-items?' + orderQuery);
+        if (version !== requestVersion) return;
+        const catalogItemIds = new Set(catalogItems.map(item => String(item.id)));
+        sourceLines = orderResult.filter(line => catalogItemIds.has(String(line.item_id)));
+      }
+      renderPicker(sourceLines);
+      if (!orderId) {
+        status.textContent = catalogItems.length
+          ? `${catalogItems.length} Item từ bảng Items. Chọn Sales Order để thêm Item vào Sales Lines.`
+          : 'Không tìm thấy Item trong bảng Items. Hãy thử từ khóa khác.';
+      } else if (itemResult.total > 100) {
+        status.textContent = sourceLines.length
+          ? `${catalogItems.length} Item đã tra cứu; ${sourceLines.length} dòng khớp với Sales Order.`
+          : `${catalogItems.length} Item đã tra cứu; chưa có dòng khớp trong Sales Order.`;
+        status.textContent += ' Nhập mã hoặc tên để tìm Item khác.';
+      } else {
+        status.textContent = sourceLines.length
+          ? `${catalogItems.length} Item từ bảng Items; ${sourceLines.length} dòng khớp với Sales Order.`
+          : catalogItems.length
+            ? 'Item đã tải từ bảng Items nhưng không có Item nào thuộc Sales Order đã chọn.'
+            : 'Không tìm thấy Item đang hoạt động trong bảng Items. Hãy thử từ khóa khác.';
+      }
     } catch (error) {
-      if (version === requestVersion) status.textContent = 'Không tải được dòng Sales Order. Chọn lại đơn hoặc thử lại.';
+      if (version === requestVersion) {
+        renderPicker([]);
+        add.disabled = true;
+        status.textContent = `Không tra cứu được dữ liệu: ${error.message}`;
+      }
     }
   }
-  order?.addEventListener('change', load);
+  const scheduleLookup = () => {
+    clearTimeout(lookupTimer);
+    requestVersion++;
+    catalogItems = [];
+    sourceLines = [];
+    picker.replaceChildren(placeholder.cloneNode(true));
+    add.disabled = true;
+    lookupTimer = setTimeout(lookupItems, 200);
+  };
+  search.addEventListener('input', scheduleLookup);
+  category.addEventListener('change', lookupItems);
+  order?.addEventListener('change', () => {
+    rows = [];
+    body.replaceChildren();
+    updateTotals();
+    lookupItems();
+  });
+  if (order?.value) lookupItems();
+  updateTotals();
   return {
     section,
     read() {
-      const selected = rows.filter(row => row.include.checked);
-      if (!order?.value) throw new Error('Chọn mã Sales Order trước khi thêm Sales Lines.');
-      if (!selected.length) throw new Error('Chọn ít nhất một Sales Line trong biểu mẫu.');
-      return selected.map(row => {
+      if (!order?.value) throw new Error('Chọn mã Sales Order trước khi tra cứu Item.');
+      if (!rows.length) throw new Error('Hãy tra cứu và thêm ít nhất một Item từ Sales Order.');
+      return rows.map(row => {
         const quantity = row.quantity.value;
         if (!/^\d+(\.\d{1,3})?$/.test(quantity) || Number(quantity) <= 0
             || Number(quantity) > Number(row.source.quantity)) {
@@ -160,8 +311,9 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
   try {
     const salesDocumentCreate = ['sales_orders', 'sales_headers'].includes(table) && !row;
     const purchaseDocumentCreate = table === 'purchase_headers' && !row;
+    if (table === 'purchase_headers' && row) purchaseType = row.document_type;
     const documentCreate = salesDocumentCreate || purchaseDocumentCreate;
-    const fullSalesForm = ['sales_orders', 'sales_headers', 'sales_returns'].includes(table);
+    const fullSalesForm = ['sales_orders', 'sales_headers', 'sales_returns', 'sales_invoices'].includes(table);
     const salesDocumentType = row?.document_type || (table === 'sales_headers'
       ? (erpState.filterColumn === 'document_type' ? erpState.filterValue : 'QUOTE')
       : ({sales_orders: 'ORDER', sales_returns: 'RETURN_ORDER', sales_invoices: 'INVOICE'}[table]));
@@ -179,7 +331,7 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
         !(table === 'sales_headers' && row && field.name === 'document_type') &&
         !(documentCreate && ['subtotal', 'discount_amount', 'vat_amount', 'total_amount', 'status'].includes(field.name))}));
     if (version !== erpFormVersion || !erpEditDialog.open) return;
-    const purchaseTitles = {ORDER: 'Purchase Order', QUOTE: 'Purchase Quote', INVOICE: 'Purchase Invoice'};
+    const purchaseTitles = {ORDER: 'Purchase Order', QUOTE: 'Purchase Quote', INVOICE: 'Purchase Invoice', RETURN_ORDER: 'Purchase Return Order'};
     const title = erpElement('h2', table === 'items'
       ? (row ? 'Sửa Item' : 'Tạo Item mới')
       : purchaseDocumentCreate ? 'Thêm ' + (purchaseTitles[purchaseType] || purchaseTitles.ORDER)
@@ -200,7 +352,11 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
           && !(table === 'sales_invoices' && !row && field.name === 'customer_id')) ||
         (!row && table === 'users' && ['name', 'email', 'password'].includes(field.name)));
       const salesItemField=['sales_order_lines','sales_quote_lines','sales_invoice_lines','sales_return_lines'].includes(table)&&field.name==='item_id';
+      const productionOrderItemField = table === 'production_orders'
+        && ['item_id', 'bom_parent_item_id'].includes(field.name);
       const fieldLabel = salesItemField ? 'No.'
+        : productionOrderItemField ? 'Item to manufacture'
+        : table === 'production_orders' && field.name === 'quantity' ? 'Số lượng sản xuất'
         : table === 'items' && field.name === 'description' ? 'Tên Item'
         : table === 'items' && field.name === 'item_no' ? 'Mã Item'
         : table === 'sales_returns' && field.name === 'sales_order_id'
@@ -212,8 +368,9 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
           ? {target_table: 'units_of_measure', target_column: 'code'}
           : field.name === 'location_code' && table.startsWith('purchase_')
             ? {target_table: 'locations', target_column: 'code'}
-            : salesItemField ? {target_table:'items',target_column:'id'}
-              : erpCatalog.relations.find(r => r.source_table === table && r.source_column === field.name);
+              : productionOrderItemField ? {target_table: 'items', target_column: 'id'}
+                : salesItemField ? {target_table:'items',target_column:'id'}
+                : erpCatalog.relations.find(r => r.source_table === table && r.source_column === field.name);
       let input;
       const value = row ? row[field.name] : salesItemField ? '' : table === 'items' && field.name === 'item_category'
         ? 'INVENTORY' : (field.name === erpState.filterColumn ? erpState.filterValue : erpDefault(field));
@@ -229,9 +386,9 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
         input = erpElement('select', null);
         const options = relation ? [] : field.name === 'item_category' ? [['INVENTORY', 'Inventory'], ['SERVICE', 'Service'], ['NON_INVENTORY', 'Non-Inventory']]
           : field.name === 'document_type' ? (table === 'purchase_headers'
-            ? [['ORDER', 'Đơn mua hàng'], ['QUOTE', 'Báo giá mua'], ['INVOICE', 'Hóa đơn mua']]
+            ? [['ORDER', 'Đơn mua hàng'], ['QUOTE', 'Báo giá mua'], ['INVOICE', 'Hóa đơn mua'], ['RETURN_ORDER', 'Đơn trả hàng mua']]
             : [['QUOTE', 'Báo giá'], ['ORDER', 'Đơn bán']])
-          : field.name === 'item_type' ? [['PURCHASED', 'Mua sẵn / vật tư'], ['MANUFACTURED', 'Có production / sản xuất']]
+          : field.name === 'item_type' ? [['DEFAULT', 'Mặc định'], ['MANUFACTURED', 'Sản xuất'], ['PRODUCTION_COMPONENT', 'Linh kiện sản xuất']]
           : table === 'sales_returns' && field.name === 'status' ? (row ? [['DRAFT', 'Nháp'], ['RECEIVED', 'Đã nhận hàng — cộng tồn kho'], ['CANCELLED', 'Hủy']] : [['DRAFT', 'Nháp']])
           : table === 'production_orders' && field.name === 'status' ? (row ? [['DRAFT', 'Nháp'], ['COMPLETED', 'Hoàn tất — cập nhật tồn kho'], ['CANCELLED', 'Hủy']] : [['DRAFT', 'Nháp']])
           : field.name === 'role' ? [['EMPLOYEE', 'Employee'], ['HR', 'Human Resources'], ['LEADER', 'Team Leader'], ['MANAGER', 'Manager'], ['DIRECTOR', 'Director'], ['ADMIN', 'Administrator']] : field.type === 'boolean'
@@ -242,7 +399,9 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
         if (relation) {
           const lookup = erpElement('input', null, 'block w-full border rounded-lg px-3 py-2');
           lookup.type = 'search';
-          lookup.placeholder = table === 'sales_returns' && field.name === 'sales_order_id'
+          lookup.placeholder = productionOrderItemField
+            ? 'Tìm Item theo mã hoặc tên'
+            : table === 'sales_returns' && field.name === 'sales_order_id'
             ? 'Tìm mã Sales Order (SO-...)'
             : 'Tìm ' + tableLabels[relation.target_table].toLowerCase();
           lookup.setAttribute('aria-label', lookup.placeholder);
@@ -282,23 +441,32 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
                 lookupParams.filterValue = receipts.rows[0].purchase_order_id;
                 lookupParams.documentType = 'ORDER';
               }
-              if ((table === 'production_orders' && field.name === 'item_id') || (table === 'item_bom' && field.name === 'parent_item_id')) {
+              if ((table === 'production_orders' && ['item_id', 'bom_parent_item_id'].includes(field.name))
+                  || (table === 'item_bom' && field.name === 'parent_item_id')) {
                 lookupParams.filterColumn = 'item_type'; lookupParams.filterValue = 'MANUFACTURED';
+              }
+              if (table === 'item_bom' && field.name === 'component_item_id') {
+                lookupParams.filterColumn = 'item_type'; lookupParams.filterValue = 'PRODUCTION_COMPONENT';
               }
               const data = await erpGet('/tables/' + relation.target_table + '?' + new URLSearchParams(lookupParams));
               if (request !== requestVersion) return;
               input.replaceChildren(empty);
+              const eligibleRecords = table === 'production_orders' && field.name === 'bom_parent_item_id'
+                ? data.rows.filter(record => record.item_category === 'INVENTORY' && !record.blocked)
+                : table === 'production_orders' && field.name === 'item_id'
+                  ? data.rows.filter(record => record.item_category === 'INVENTORY' && !record.blocked)
+                  : data.rows;
               const displayName = record => relation.target_table === 'customers'
                 ? record.name || record.customer_no || ''
                 : relation.target_table === 'locations'
-                  ? record.name || record.code || ''
+                  ? (table.startsWith('sales_') ? record.code || '' : [record.code, record.name].filter(Boolean).join(' · '))
                   : relation.target_table === 'items'
                     ? [record.item_no, record.description].filter(Boolean).join(' · ') || 'Không có mã Item'
                     : relation.target_table === 'units_of_measure'
                       ? [record.code, record.name].filter(Boolean).join(' · ') || 'Không có mã đơn vị tính'
                   : record.name || record.description || record.account_name || record.order_no || record.return_no || record.invoice_no || record.code || record.email || '';
               const showNameOnly = ['customers', 'locations', 'units_of_measure'].includes(relation.target_table);
-              data.rows.forEach(record => {
+              eligibleRecords.forEach(record => {
                 const id = String(record[relation.target_column]);
                 const caption = table === 'sales_returns' && field.name === 'sales_order_id'
                   ? record.order_no
@@ -324,7 +492,9 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
               }
               input.value = selected;
               form.documentRefresh?.();
-              lookupStatus.textContent = data.total > 100 ? 'Hiển thị 100 kết quả đầu. Nhập từ khóa để tìm thêm.' : `${data.total} lựa chọn`;
+              lookupStatus.textContent = data.total > 100
+                ? 'Hiển thị 100 kết quả đầu. Nhập từ khóa để tìm thêm.'
+                : `${eligibleRecords.length} lựa chọn`;
             } catch (error) { lookupStatus.textContent = 'Không tải được lựa chọn. Nhập từ khóa để thử lại.'; }
           };
           let timer;
@@ -500,7 +670,6 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
       makeOrder.type = 'submit'; makeOrder.dataset.makeOrder = 'true'; actions.append(makeOrder);
       const quoteNumber = controls.get('quote_no');
       if (quoteNumber) { quoteNumber.required = false; quoteNumber.placeholder = 'Tự sinh Document No. khi để trống'; }
-      grid.append(erpElement('p', 'Make Order chỉ áp dụng cho Báo giá. Chọn Đơn bán để tạo đơn ngay và cập nhật tồn kho.', 'text-sm text-indigo-700 col-span-full'));
       const documentType = controls.get('document_type');
       if (documentType) {
         const updateMakeOrderVisibility = () => { makeOrder.hidden = documentType.value !== 'QUOTE'; };
@@ -508,12 +677,12 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
         updateMakeOrderVisibility();
       }
     }
-    form.append(title, erpElement('p', 'Các trường có dấu * là bắt buộc.', 'text-sm text-slate-500'), grid, error, actions);
+    form.append(title, grid, error, actions);
     const stockHelp = {
       sales_returns: 'Tạo phiếu nháp theo đơn bán gốc. Mở phiếu → Dòng trả hàng bán để thêm hàng trả. Khi đã nhận đủ hàng, sửa trạng thái thành Đã nhận hàng để cộng tồn kho. Phiếu đã nhận không được sửa hoặc xóa. Phiếu này chưa hạch toán hoàn tiền/công nợ.',
       sales_return_lines: 'Chọn dòng thuộc đơn bán gốc; vật tư được lấy tự động. Số lượng trả phải lớn hơn 0 và không vượt số lượng còn được trả. Lưu dòng nháp chưa cộng kho.',
-      items: 'Type chọn Inventory để theo dõi tồn kho, Service cho dịch vụ hoặc Non-Inventory cho hàng không quản lý tồn. Origin xác định Item mua sẵn hay sản xuất. Tồn kho được tính từ các kho và cập nhật bằng phiếu nhập, đơn bán hoặc sản xuất.',
-      item_bom: 'Số lượng là định mức linh kiện cần cho 1 đơn vị Item sản xuất. Bán thành phẩm có thể là linh kiện; cần sản xuất hoặc nhập đủ bán thành phẩm trước.',
+      items: 'Type chọn Default, Sản xuất hoặc Linh kiện sản xuất. Item loại Sản xuất được chọn trong Production Orders; BOM Lines chỉ nhận Item loại Linh kiện sản xuất. Inventory Category xác định cách theo dõi tồn kho.',
+      item_bom: 'Chọn Item loại Sản xuất đã xuất hiện trong Production Orders; BOM Lines chỉ nhận Items loại Linh kiện sản xuất. Số lượng là định mức cần cho một đơn vị Item sản xuất.',
       production_orders: 'Lệnh nháp chưa đổi tồn. Khi hoàn tất, linh kiện theo BOM bị trừ và Item sản xuất được cộng vào kho đã chọn. Thiếu linh kiện sẽ không cho hoàn tất. Lệnh hoàn tất không được sửa.',
       sales_order_lines: 'Dòng đơn bán được tạo từ Sales Header. Lưu đơn bán sẽ trừ tồn kho; sửa số lượng chỉ điều chỉnh phần chênh lệch.',
       purchase_receipt_lines: 'Lưu dòng phiếu nhập sẽ cộng tồn kho. Nếu bỏ trống mã kho, dùng kho trên phiếu nhập, sau đó kho mặc định.',
@@ -547,7 +716,7 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
       let invalidPriceInput = null;
       fields.forEach(field => {
         if (!field.writable) return;
-        const input = controls.get(field.name), value = input.value.trim();
+        const input = controls.get(field.name), value = field.name === 'password' ? input.value : input.value.trim();
         if (row && value === initialValues.get(field.name)) return;
         if (!row && value === '' && field.hasDefault) return;
         if (row && field.name === 'password' && !value) return;
@@ -577,13 +746,13 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
       }
       const headerDetails=readHeaderDetails();
       if(Object.keys(headerDetails).length)payload.document_details=headerDetails;
-      if (row && !Object.keys(payload).length) { error.textContent = 'Chưa có thay đổi để lưu.'; return; }
+      if (row && table !== 'purchase_headers' && !Object.keys(payload).length) { error.textContent = 'Chưa có thay đổi để lưu.'; return; }
       erpSaving = true; save.disabled = true; save.textContent = 'Đang lưu...'; error.textContent = '';
       if (makeOrder) makeOrder.disabled = true;
       try {
         let savedDocument;
         if (salesDocumentCreate) savedDocument = await saveSalesDocument(payload, readLines(), salesDocumentType === 'QUOTE');
-        else if (purchaseDocumentCreate) savedDocument = await savePurchaseDocument(payload, purchaseLines());
+        else if (table === 'purchase_headers') savedDocument = await savePurchaseDocument({...row, ...payload}, purchaseLines(), row?.id);
         else if (salesLines) {
           const endpoint = table === 'sales_invoices' ? '/sales-invoices/with-lines' : '/sales-returns/with-lines';
           const response = await fetch(erpApi + endpoint, {
@@ -625,12 +794,14 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
     if (table === 'purchase_headers') form.dataset.purchaseDocument = 'true';
     enhanceDocumentForm(erpEditDialog);
     if (table === 'items') arrangeItemCard(form, row);
-    if (salesDocumentCreate) readLines = salesDocumentLines(form, salesDocumentType === 'QUOTE');
-    const purchaseLines = purchaseDocumentCreate ? purchaseDocumentLines(form, controls, purchaseType) : null;
+    if (salesDocumentCreate) readLines = salesDocumentLines(form, salesDocumentType === 'QUOTE', controls.get('location_id'));
+    const purchaseLines = table === 'purchase_headers' ? purchaseDocumentLines(form, controls, purchaseType, row) : null;
     if(row && readHeaderDetails.headerId)await appendSavedSalesLines(form,readHeaderDetails.headerId);
     if(version!==erpFormVersion || !erpEditDialog.open)return;
-    if(form.dataset.salesDocument==='true')arrangeSalesForm(form);
+    if(form.dataset.salesDocument==='true'){arrangeSalesForm(form);scopeSalesFields(form,salesDocumentType);}
+    if(form.dataset.purchaseDocument==='true')arrangePurchaseForm(form,row,purchaseType);
     if(row&&readHeaderDetails.headerId)appendSalesDocumentActions(form,table,row,readHeaderDetails.headerId);
+    mountDocumentHeader(form.querySelector('.document-actions'), {table, row});
     const invoiceDetails = form.querySelector('[data-invoice-details]');
     if (invoiceDetails) {
       const linesSection = form.querySelector('.sales-document') || salesLines?.section;

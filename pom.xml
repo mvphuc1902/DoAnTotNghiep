@@ -1,28 +1,28 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
+
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
     <version>3.5.15-SNAPSHOT</version>
     <relativePath />
-    <!-- lookup parent from repository -->
   </parent>
+
   <groupId>com.example</groupId>
   <artifactId>demo</artifactId>
   <version>0.0.1-SNAPSHOT</version>
+
   <properties>
-    <java.version>26</java.version>
+    <java.version>25</java.version>
   </properties>
+
   <dependencies>
     <dependency>
       <groupId>org.eclipse.angus</groupId>
       <artifactId>jakarta.mail</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework.security</groupId>
-      <artifactId>spring-security-test</artifactId>
-      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -51,39 +51,20 @@
       <optional>true</optional>
     </dependency>
     <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
     </dependency>
-     <groupId>org.projectlombok</groupId>
-    <artifactId>lombok</artifactId>
-    <version>1.18.42</version>
-    <scope>provided</scope>
   </dependencies>
+
   <build>
+    <testSourceDirectory>${project.basedir}/src/main/java</testSourceDirectory>
     <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-jar-plugin</artifactId>
-        <configuration>
-          <excludes>
-            <exclude>**/*Test.class</exclude>
-            <exclude>**/*Test$*.class</exclude>
-          </excludes>
-        </configuration>
-      </plugin>
-      <plugin>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-maven-plugin</artifactId>
-        <configuration>
-          <excludes>
-            <exclude>
-              <groupId>org.projectlombok</groupId>
-              <artifactId>lombok</artifactId>
-            </exclude>
-          </excludes>
-        </configuration>
-      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
@@ -101,7 +82,7 @@
                   <artifactId>lombok</artifactId>
                 </path>
               </annotationProcessorPaths>
-              <excludes xmlns="http://maven.apache.org/POM/4.0.0">
+              <excludes>
                 <exclude>**/*Test.java</exclude>
               </excludes>
             </configuration>
@@ -119,16 +100,20 @@
                   <artifactId>lombok</artifactId>
                 </path>
               </annotationProcessorPaths>
-              <testIncludes xmlns="http://maven.apache.org/POM/4.0.0">
-                <testInclude>**/*Test.java</testInclude>
-              </testIncludes>
+              <includes>
+                <include>**/*Test.java</include>
+              </includes>
             </configuration>
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
     </plugins>
-    <testSourceDirectory xmlns="http://maven.apache.org/POM/4.0.0">${project.basedir}/src/main/java</testSourceDirectory>
   </build>
+
   <repositories>
     <repository>
       <id>spring-snapshots</id>
@@ -139,6 +124,7 @@
       </releases>
     </repository>
   </repositories>
+
   <pluginRepositories>
     <pluginRepository>
       <id>spring-snapshots</id>
@@ -149,29 +135,4 @@
       </releases>
     </pluginRepository>
   </pluginRepositories>
-  <profiles xmlns="http://maven.apache.org/POM/4.0.0">
-  <!-- Eclipse/m2e cannot represent one directory as both main and test.
-       Index all co-located classes together with test dependencies in the IDE.
-       Normal Maven builds retain separate main/test outputs and test-only dependencies. -->
-  <profile>
-    <id>vscode-colocated-sources</id>
-    <activation><property><name>m2e.version</name></property></activation>
-    <build>
-      <plugins>
-        <plugin>
-          <groupId>org.apache.maven.plugins</groupId>
-          <artifactId>maven-compiler-plugin</artifactId>
-          <executions>
-            <execution>
-              <id>default-testCompile</id>
-              <configuration>
-                <testIncludes combine.self="override"><testInclude>**/*.java</testInclude></testIncludes>
-              </configuration>
-            </execution>
-          </executions>
-        </plugin>
-      </plugins>
-    </build>
-  </profile>
-</profiles>
 </project>

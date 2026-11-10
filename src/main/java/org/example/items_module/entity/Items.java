@@ -8,7 +8,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -18,7 +17,6 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-@AllArgsConstructor 
 public class Items {
 
     @Id
@@ -33,6 +31,9 @@ public class Items {
 
     @Column(name = "item_category", nullable = false)
     private String itemCategory = "INVENTORY";
+
+    @Column(name = "item_type", length = 20, nullable = false)
+    private String itemType = "DEFAULT";
 
     @Column(name = "base_unit_of_measure")
     private String baseUnitOfMeasure;

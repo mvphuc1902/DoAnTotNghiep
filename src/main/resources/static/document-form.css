@@ -45,7 +45,7 @@ dialog.document-dialog{width:calc(100vw - 32px)!important;max-width:1600px!impor
 .sales-document th{text-align:left;font-weight:400;color:#476175;padding:12px 8px;border-bottom:1px solid #8999a8}
 .sales-document td{border:1px solid #d5dfe4;padding:6px 8px}
 .sales-document td:first-child{min-width:190px;max-width:280px;overflow-wrap:anywhere}
-.sales-document td input{width:100%;min-width:70px;padding:8px 4px;border:1px solid #8999a8;background:white}
+.sales-document td input:not([type=checkbox]){width:100%;min-width:70px;padding:8px 4px;border:1px solid #8999a8;background:white}
 .sales-document td:nth-child(4) input{min-width:110px}
 .sales-document td:nth-child(7){white-space:nowrap;text-align:right}
 .sales-totals{display:grid;grid-template-columns:1fr 180px;gap:10px 20px;max-width:500px;margin:24px 0 24px auto;align-items:center;font-size:14px}
@@ -126,6 +126,21 @@ dialog.document-dialog{width:calc(100vw - 64px)!important;max-width:1280px!impor
 .item-card .document-actions button[type=submit]{background:#008596;border-color:#008596}
 @media(min-width:900px){.document-dialog .item-card .document-field:not(.document-field-wide){display:grid!important;grid-template-columns:minmax(120px,.9fr) minmax(0,1.1fr);align-items:start;gap:6px 12px}.item-card .document-field>span{grid-column:1;grid-row:1;padding-top:10px}.item-card .document-field>:not(span){grid-column:2}}
 .document-dialog .item-card .document-field.document-field-collapsed{display:none!important}
-
 .document-section.document-section-expandable>summary{cursor:default}
 .document-section.document-section-expandable>summary:hover{background:inherit}
+
+/* Shared Sales Lines presentation across quote, order, invoice, and return views. */
+.sales-source-lines{grid-column:1/-1!important}
+.sales-source-lines>p{font-size:11px;line-height:1.6;color:#8291a7}
+.sales-source-lines .sales-lines-scroll{margin:12px 0}
+.sales-source-lines .sales-document{min-width:880px}
+.sales-source-lines th:first-child,.sales-source-lines td:first-child{width:52px;text-align:center}
+.sales-source-lines td input.sales-line-quantity,.sales-source-lines td input.sales-line-vat{width:100%;min-width:72px;max-width:120px;padding:8px 6px;border:1px solid #d5dfed;border-radius:5px}
+.sales-source-lines .sales-totals{margin:20px 20px 24px auto}
+.sales-detail-lines{margin-top:18px}
+.sales-detail-lines .sales-lines-scroll{margin:12px 0}
+.sales-detail-lines th{background:#f6f8fc}
+.sales-detail-lines td{white-space:nowrap}
+.sales-detail-lines td:nth-child(4),.sales-detail-lines td:nth-child(6){white-space:normal;min-width:180px}
+.sales-detail-lines>button{margin:8px 0}
+.sales-source-lines td input[type=checkbox]{width:auto;min-width:0}

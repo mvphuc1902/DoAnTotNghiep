@@ -16,6 +16,15 @@ class ErpWriteControllerTest {
 
 
     @Test
+    void passwordWhitespaceIsPreservedWhenSavingAnAccount() {
+        doReturn(List.of(field("password", "character varying", true, false))).when(controller).schema("users");
+        String password = "  example-password-123  ";
+        String encoded = (String) controller.validate("users", Map.of("password", password), false).get("password");
+        BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+        assertTrue(encoder.matches(password, encoded));
+        assertFalse(encoder.matches(password.trim(), encoded));
+    }
+    @Test
     void inventoryDeleteRequiresAdminAndAdjustsStockBeforeDelete() {
         var context = org.springframework.security.core.context.SecurityContextHolder.getContext();
         var previous = context.getAuthentication();
@@ -78,14 +87,14 @@ class ErpWriteControllerTest {
 
     @Test
     void purchaseLinesKeepSelectedWarehouseAndDefaultToHeaderWarehouse() {
-        for (String type : List.of("ORDER", "QUOTE")) {
+        for (String type : List.of("ORDER", "QUOTE", "RETURN_ORDER")) {
             for (String selected : new String[]{"KHO-HN", null}) {
                 reset(jdbc);
                 when(jdbc.queryForObject(contains("FROM units_of_measure"), eq(Boolean.class), eq("EA"))).thenReturn(true);
         when(jdbc.queryForObject(contains("FROM vendors"), eq(Boolean.class), eq(4L))).thenReturn(true);
                 when(jdbc.queryForObject(contains("FROM locations"), eq(Boolean.class), anyString())).thenReturn(true);
                 when(jdbc.queryForObject(eq("SELECT erp_next_document_no(?)"), eq(String.class), anyString()))
-                    .thenAnswer(invocation -> invocation.getArgument(2).equals("PO") ? "PO-001" : "PQ-001");
+                    .thenAnswer(invocation -> invocation.getArgument(2) + "-001");
                 when(jdbc.queryForObject(contains("INSERT INTO purchase_headers"), eq(Long.class), any(Object[].class))).thenReturn(7L);
                 when(jdbc.queryForList(contains("SELECT item_no"), eq(9L))).thenReturn(List.of(Map.of(
                     "item_no", "ITEM-009", "description", "Item", "base_unit_of_measure", "EA")));
@@ -94,7 +103,7 @@ class ErpWriteControllerTest {
                     List.of(new ErpWriteController.PurchaseDocumentLineInput(null, 9L, "Item", "EA",
                         BigDecimal.ONE, BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.ZERO, selected))));
                 verify(jdbc).queryForObject(eq("SELECT erp_next_document_no(?)"), eq(String.class),
-                    eq(type.equals("ORDER") ? "PO" : "PQ"));
+                    eq(type.equals("ORDER") ? "PO" : type.equals("QUOTE") ? "PQ" : "P-RO"));
                 var values = org.mockito.ArgumentCaptor.forClass(Object[].class);
                 verify(jdbc).update(contains("INSERT INTO purchase_lines"), values.capture());
                 assertEquals(selected == null ? "KHO-HCM" : selected, values.getValue()[6]);
@@ -257,16 +266,18 @@ class ErpWriteControllerTest {
     }
 
     @Test
-    void acceptsOnlySupportedItemCategoriesAndOrigins() {
+    void acceptsOnlySupportedItemCategoriesAndTypes() {
         doReturn(List.of(field("item_category", "character varying", true, true),
             field("item_type", "character varying", true, true))).when(controller).schema("items");
 
         assertEquals("SERVICE", controller.validate("items",
-            Map.of("item_category", "SERVICE", "item_type", "PURCHASED"), true).get("item_category"));
+            Map.of("item_category", "SERVICE", "item_type", "DEFAULT"), true).get("item_category"));
         assertThrows(ResponseStatusException.class, () -> controller.validate("items",
-            Map.of("item_category", "UNKNOWN", "item_type", "PURCHASED"), true));
+            Map.of("item_category", "UNKNOWN", "item_type", "DEFAULT"), true));
         assertThrows(ResponseStatusException.class, () -> controller.validate("items",
             Map.of("item_category", "INVENTORY", "item_type", "UNKNOWN"), true));
+        assertEquals("PRODUCTION_COMPONENT", controller.validate("items",
+            Map.of("item_category", "INVENTORY", "item_type", "PRODUCTION_COMPONENT"), true).get("item_type"));
     }
 
     @Test
@@ -292,11 +303,30 @@ class ErpWriteControllerTest {
         when(jdbc.queryForObject(anyString(), eq(Object.class), any(Object[].class))).thenReturn(42L);
 
         assertEquals("42", controller.create("items", Map.of("item_no", "ITEM-042",
-            "item_category", "INVENTORY", "item_type", "PURCHASED", "initial_location_id", "8",
+            "item_category", "INVENTORY", "item_type", "DEFAULT", "initial_location_id", "8",
             "initial_quantity", "12.500")).get("id"));
 
         verify(jdbc).update(contains("INSERT INTO inventory(item_id,location_id,quantity,average_cost)"),
             eq(42L), eq(8L), eq(new BigDecimal("12.500")), eq(42L));
+    }
+
+    @Test
+    void createsProductionComponentItemForBomLookup() {
+        doReturn(List.of(field("item_no", "character varying", true, false),
+            field("item_category", "character varying", true, true),
+            field("item_type", "character varying", true, true),
+            field("blocked", "boolean", false, true),
+            field("unit_cost", "numeric", false, false))).when(controller).schema("items");
+        when(jdbc.queryForObject(contains("SELECT EXISTS"), eq(Boolean.class), eq(8L))).thenReturn(true);
+        when(jdbc.queryForObject(anyString(), eq(Object.class), any(Object[].class))).thenReturn(43L);
+
+        assertEquals("43", controller.create("items", Map.of("item_no", "COMP-043",
+            "item_category", "INVENTORY", "item_type", "PRODUCTION_COMPONENT", "blocked", "false",
+            "initial_location_id", "8", "initial_quantity", "0")).get("id"));
+
+        verify(jdbc).queryForObject(
+            eq("INSERT INTO public.\"items\" (\"item_no\",\"item_category\",\"item_type\",\"blocked\") VALUES (?,?,?,?) RETURNING id"),
+            eq(Object.class), eq("COMP-043"), eq("INVENTORY"), eq("PRODUCTION_COMPONENT"), eq(false));
     }
 
     @Test

@@ -61,7 +61,7 @@ BEGIN
     UPDATE purchase_receipts SET location_code=(SELECT code FROM locations WHERE id=wh) WHERE id=receipt;
 
     INSERT INTO item_bom(parent_item_id,component_item_id,quantity) VALUES(made_id,raw_id,2);
-    INSERT INTO production_orders(production_no,item_id,location_id,quantity)
+    INSERT INTO production_orders(production_no,bom_parent_item_id,location_id,quantity)
     VALUES(marker,made_id,wh,3) RETURNING id INTO production;
     ASSERT (SELECT quantity=12 FROM items WHERE id=raw_id), 'Draft must not consume';
     UPDATE production_orders SET status='COMPLETED' WHERE id=production;
@@ -77,7 +77,7 @@ BEGIN
     END;
     UPDATE item_bom SET quantity=3 WHERE parent_item_id=made_id;
     ASSERT (SELECT quantity_per_unit=2 FROM production_components WHERE production_order_id=production), 'Old BOM snapshot must stay unchanged';
-    INSERT INTO production_orders(production_no,item_id,location_id,quantity)
+    INSERT INTO production_orders(production_no,bom_parent_item_id,location_id,quantity)
     VALUES(marker||'-SHORT',made_id,wh,10) RETURNING id INTO invalid_production;
     BEGIN
         UPDATE production_orders SET status='COMPLETED' WHERE id=invalid_production;
@@ -121,13 +121,13 @@ BEGIN
     EXCEPTION WHEN check_violation THEN NULL;
     END;
     ASSERT (SELECT sum(quantity_in-quantity_out)=6 FROM inventory_ledger WHERE item_id=raw_id), 'Ledger equals inventory';
-    INSERT INTO production_orders(production_no,item_id,location_id,quantity)
+    INSERT INTO production_orders(production_no,bom_parent_item_id,location_id,quantity)
     VALUES(marker||'-SUB-PROD',sub_id,wh,1) RETURNING id INTO invalid_production;
     UPDATE production_orders SET status='COMPLETED' WHERE id=invalid_production;
     ASSERT (SELECT quantity=1 FROM items WHERE id=sub_id), 'Subassembly can be produced';
     ASSERT (SELECT quantity=2 FROM items WHERE id=made_id), 'Manufactured component is consumed from stock';
     BEGIN
-        INSERT INTO production_orders(production_no,item_id,location_id,quantity)
+        INSERT INTO production_orders(production_no,bom_parent_item_id,location_id,quantity)
         VALUES(marker||'-RAW-PROD',raw_id,wh,1);
         RAISE EXCEPTION 'Purchased item production was allowed';
     EXCEPTION WHEN check_violation THEN NULL;

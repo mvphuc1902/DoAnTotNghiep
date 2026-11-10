@@ -26,6 +26,7 @@ class BomDocumentTest {
     }
     @Test void rejectsStaleDocumentWithoutChangingLines() {
         when(jdbc.queryForObject(anyString(),eq(Boolean.class),eq(1L))).thenReturn(true);
+        when(jdbc.queryForObject(anyString(),eq(Boolean.class),eq(2L))).thenReturn(true);
         when(jdbc.queryForList(anyString(),eq(1L))).thenReturn(List.of(Map.of("component_item_id",2L,"quantity",new BigDecimal("3"))));
         var error = assertThrows(ResponseStatusException.class, () -> controller.saveBom(1, new ErpWriteController.BomDocument(List.of(line(2,"1")), List.of(line(2,"2")))));
         assertEquals(409,error.getStatusCode().value());
@@ -33,10 +34,21 @@ class BomDocumentTest {
     }
     @Test void savesMultipleLinesAndAcceptsEquivalentDecimalScales() {
         when(jdbc.queryForObject(anyString(),eq(Boolean.class),eq(1L))).thenReturn(true);
+        when(jdbc.queryForObject(anyString(),eq(Boolean.class),eq(2L))).thenReturn(true);
+        when(jdbc.queryForObject(anyString(),eq(Boolean.class),eq(3L))).thenReturn(true);
         when(jdbc.queryForList(anyString(),eq(1L))).thenReturn(List.of(Map.of("component_item_id",2L,"quantity",new BigDecimal("1.000"))));
         var result=controller.saveBom(1,new ErpWriteController.BomDocument(List.of(line(2,"1")),List.of(line(2,"2"),line(3,"0.25"))));
         assertEquals(2,result.get("lineCount"));
         verify(jdbc).update(startsWith("INSERT INTO item_bom"),eq(1L),eq(2L),eq(new BigDecimal("2")));
         verify(jdbc).update(startsWith("INSERT INTO item_bom"),eq(1L),eq(3L),eq(new BigDecimal("0.25")));
+    }
+
+    @Test void rejectsComponentsNotClassifiedForProductionBom() {
+        when(jdbc.queryForObject(anyString(),eq(Boolean.class),eq(1L))).thenReturn(true);
+        when(jdbc.queryForObject(anyString(),eq(Boolean.class),eq(2L))).thenReturn(false);
+        var error = assertThrows(ResponseStatusException.class,
+                () -> controller.saveBom(1,new ErpWriteController.BomDocument(List.of(),List.of(line(2,"1")))));
+        assertEquals(400,error.getStatusCode().value());
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
 }

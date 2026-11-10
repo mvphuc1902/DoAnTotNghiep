@@ -83,12 +83,31 @@ public class ErpWriteController {
     @ResponseStatus(HttpStatus.CREATED)
     @Transactional
     public Map<String, Object> createPurchaseDocument(@RequestBody PurchaseDocumentCreateRequest request) {
+        return savePurchaseDocument(request, null);
+    }
+
+    @PutMapping("/purchase-documents/{id}/with-lines")
+    @Transactional
+    public Map<String, Object> updatePurchaseDocument(@PathVariable long id, @RequestBody PurchaseDocumentCreateRequest request) {
+        guardPurchaseChange(id);
+        if (request == null || request.header() == null) throw bad("Thiếu thông tin chứng từ mua.");
+        var original = lock("purchase_headers", id);
+        for (String field : List.of("document_type", "vendor_id", "currency_code")) {
+            if (!Objects.toString(original.get(field), "").equals(Objects.toString(request.header().get(field), "")))
+                throw bad("Không được đổi " + field + " trên chứng từ đã tạo.");
+        }
+        var merged = new LinkedHashMap<String, Object>(original);
+        for (String field : PURCHASE_EDIT_FIELDS) if (request.header().containsKey(field)) merged.put(field, request.header().get(field));
+        return savePurchaseDocument(new PurchaseDocumentCreateRequest(merged, request.lines()), id);
+    }
+
+    private Map<String, Object> savePurchaseDocument(PurchaseDocumentCreateRequest request, Long existingId) {
         if (request == null || request.header() == null) throw bad("Thiếu thông tin chứng từ mua.");
         List<PurchaseDocumentLineInput> lines = validatedPurchaseLines(request.lines());
         Map<String, Object> input = request.header();
         String type = purchaseText(input.get("document_type"), "Loại chứng từ");
-        if (!Set.of("ORDER", "QUOTE", "INVOICE").contains(type))
-            throw bad("Loại chứng từ phải là ORDER, QUOTE hoặc INVOICE.");
+        if (!Set.of("ORDER", "QUOTE", "INVOICE", "RETURN_ORDER").contains(type))
+            throw bad("Loại chứng từ phải là ORDER, QUOTE, INVOICE hoặc RETURN_ORDER.");
         long vendorId = purchaseLong(input.get("vendor_id"), "Nhà cung cấp");
         if (!Boolean.TRUE.equals(jdbc.queryForObject(
                 "SELECT EXISTS(SELECT 1 FROM vendors WHERE id=? AND coalesce(blocked,false)=false)", Boolean.class, vendorId)))
@@ -108,9 +127,10 @@ public class ErpWriteController {
         validatePurchaseLocation(location);
         String notes = purchaseOptionalText(input.get("notes"), "Ghi chú", 10000);
         BigDecimal headerDiscount = purchasePercent(input.get("discount_percent"), "Chiết khấu chứng từ");
-        String numberPrefix = switch (type) { case "ORDER" -> "PO"; case "QUOTE" -> "PQ"; default -> "P-INV"; };
-        String documentNo = jdbc.queryForObject("SELECT erp_next_document_no(?)", String.class, numberPrefix);
-        Long headerId = jdbc.queryForObject("""
+        String numberPrefix = switch (type) { case "ORDER" -> "PO"; case "QUOTE" -> "PQ"; case "RETURN_ORDER" -> "P-RO"; default -> "P-INV"; };
+        String documentNo = existingId == null ? jdbc.queryForObject("SELECT erp_next_document_no(?)", String.class, numberPrefix) : input.get("document_no").toString();
+        Long headerId = existingId;
+        if (existingId == null) headerId = jdbc.queryForObject("""
             INSERT INTO purchase_headers(document_type,document_no,vendor_id,order_date,posting_date,
                 requested_receipt_date,promised_receipt_date,vendor_reference,external_document_no,
                 currency_code,payment_terms_code,shipment_method_code,salesperson_code,location_code,
@@ -120,6 +140,12 @@ public class ErpWriteController {
                 promisedDate, vendorReference, externalDocumentNo, currency, paymentTerms, shipmentMethod,
                 salesperson, location, headerDiscount, notes);
 
+        if (existingId != null) {
+            Map<String, Object> editable = new LinkedHashMap<>();
+            for (String field : PURCHASE_EDIT_FIELDS) if (input.containsKey(field)) editable.put(field, input.get(field));
+            updatePurchaseHeader(existingId, editable);
+            jdbc.update("DELETE FROM purchase_lines WHERE purchase_header_id=?", existingId);
+        }
         BigDecimal discounts = BigDecimal.ZERO, taxes = BigDecimal.ZERO, total = BigDecimal.ZERO;
         int lineNo = 10000;
         for (PurchaseDocumentLineInput line : lines) {
@@ -449,8 +475,18 @@ public class ErpWriteController {
         if (desired.isEmpty()) throw bad("BOM cần ít nhất một nguyên vật liệu.");
         if (desired.containsKey(parentId)) throw bad("Thành phẩm không được làm nguyên vật liệu của chính nó.");
         jdbc.execute("SELECT pg_advisory_xact_lock(7821348)");
-        if (!Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM items WHERE id=? AND item_type='MANUFACTURED' AND NOT coalesce(blocked,false))", Boolean.class, parentId)))
-            throw bad("Chọn Item thành phẩm có production và không bị khóa.");
+        if (!Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM items WHERE id=? AND item_type='MANUFACTURED'
+                    AND item_category='INVENTORY' AND NOT coalesce(blocked,false))
+                """, Boolean.class, parentId)))
+            throw bad("Chọn Item loại Sản xuất còn hoạt động.");
+        for (Long componentId : desired.keySet()) {
+            if (!Boolean.TRUE.equals(jdbc.queryForObject("""
+                    SELECT EXISTS(SELECT 1 FROM items WHERE id=? AND item_type='PRODUCTION_COMPONENT'
+                        AND item_category='INVENTORY' AND NOT coalesce(blocked,false))
+                    """, Boolean.class, componentId)))
+                throw bad("Mỗi dòng BOM phải là Item loại Linh kiện sản xuất còn hoạt động.");
+        }
         Map<Long, BigDecimal> current = new TreeMap<>();
         jdbc.queryForList("SELECT component_item_id,quantity FROM item_bom WHERE parent_item_id=? FOR UPDATE", parentId)
             .forEach(row -> current.put(((Number) row.get("component_item_id")).longValue(), ((BigDecimal) row.get("quantity")).stripTrailingZeros()));
@@ -639,7 +675,7 @@ public class ErpWriteController {
                 continue;
             }
             Object raw = input.get(field.name());
-            String value = raw == null ? null : raw.toString().trim();
+            String value = raw == null ? null : field.name().equals("password") ? raw.toString() : raw.toString().trim();
             if (value == null || value.isEmpty()) {
                 if (field.name().equals("password") && !creating) continue;
                 if (field.required()) throw bad("Vui lòng nhập " + field.name());
@@ -656,8 +692,8 @@ public class ErpWriteController {
                     && !Set.of("INVENTORY", "SERVICE", "NON_INVENTORY").contains(value))
                 throw bad("Type phải là Inventory, Service hoặc Non-Inventory.");
             if (table.equals("items") && field.name().equals("item_type")
-                    && !Set.of("PURCHASED", "MANUFACTURED").contains(value))
-                throw bad("Origin phải là Purchased hoặc Manufactured.");
+                    && !Set.of("DEFAULT", "MANUFACTURED", "PRODUCTION_COMPONENT").contains(value))
+                throw bad("Type phải là Default, Sản xuất hoặc Linh kiện sản xuất.");
             if (table.equals("items") && field.name().equals("base_unit_of_measure")
                     && !Boolean.TRUE.equals(jdbc.queryForObject(
                             "SELECT EXISTS (SELECT 1 FROM units_of_measure WHERE code=? AND active=true)",
@@ -790,6 +826,9 @@ public class ErpWriteController {
     }
 
     private static void writableTable(String table) {
+        if (Set.of("sales_shipments", "sales_shipment_lines").contains(table)) throw conflict("Giao hàng qua Post Shipment trên Sales Order; không sửa/xóa phiếu đã đăng.");
+        if (Set.of("purchase_receipts", "purchase_receipt_lines").contains(table))
+            throw conflict("Nhận hàng bằng Post Receive trên Purchase Order; phiếu đã đăng sổ không được sửa/xóa trực tiếp.");
         if (Set.of("purchase_headers", "purchase_lines").contains(table))
             throw conflict("Purchase Documents và Purchase Lines phải được tạo từ biểu mẫu Purchasing để lưu đồng thời phần đầu và dòng hàng.");
         if (Set.of("inventory_ledger", "production_components", "sales_lines").contains(table))
@@ -821,9 +860,7 @@ public class ErpWriteController {
             Object rawInvoiceId = values.getOrDefault("purchase_invoice_id",
                     original == null ? null : original.get("purchase_invoice_id"));
             if (rawInvoiceId != null) {
-                Map<String, Object> invoice = lock("purchase_headers", Long.parseLong(rawInvoiceId.toString()));
-                if (!"INVOICE".equals(invoice.get("document_type")))
-                    throw bad("Chỉ Purchase Invoice mới được gắn với thanh toán nhà cung cấp.");
+                throw bad("Thanh toán Purchase Invoice bằng nút Thanh toán trên card hóa đơn để ghi đủ công nợ và G/L.");
             }
         }
         if (table.equals("purchase_receipts")) {

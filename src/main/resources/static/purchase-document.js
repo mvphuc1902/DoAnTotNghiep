@@ -1,4 +1,4 @@
-function purchaseDocumentLines(form, controls, initialType) {
+function purchaseDocumentLines(form, controls, initialType, header = null) {
   const section = erpElement('details', null, 'document-section sales-document');
   section.open = true;
   section.append(erpElement('summary', 'Purchase Lines'));
@@ -10,15 +10,20 @@ function purchaseDocumentLines(form, controls, initialType) {
   const picker = erpElement('select');
   picker.setAttribute('aria-label', initialType === 'INVOICE' ? 'Chọn dòng phiếu nhập' : 'Chọn mặt hàng');
   const add = erpButton('+ Thêm dòng', () => {
-    const selected = choices.find(choice => String(choice.id) === picker.value);
+    const selected = choices.find(choice => String(choice.id) === picker.value && choice.blocked !== true);
     if (selected) {
-      addLine(selected);
+      addLine(initialType === 'INVOICE' ? selected : {...selected, unit_price: selected.unit_cost ?? 0});
       picker.value = '';
       picker.dispatchEvent(new Event('change', {bubbles: true}));
     }
   });
   add.disabled = true;
-  tools.append(search, picker, add);
+  if (initialType === 'INVOICE') tools.append(search, picker, add);
+  else {
+    tools.append(picker, add);
+    tools.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:8px';
+    picker.style.cssText = 'flex:0 1 440px;width:100%;min-width:0';
+  }
   const message = erpElement('p', 'Chọn nhà cung cấp để tải dữ liệu.', 'document-hint');
   message.setAttribute('role', 'status');
   const scroll = erpElement('div', null, 'sales-lines-scroll');
@@ -35,6 +40,7 @@ function purchaseDocumentLines(form, controls, initialType) {
   (form.querySelector('.document-content') || form).append(section);
 
   const rows = [];
+  let savedLinesReady = !header;
   let locations = [];
   let units = [];
   let locationsReady = false;
@@ -165,7 +171,7 @@ function purchaseDocumentLines(form, controls, initialType) {
     tr.append(locationCell);
     [
       ['quantity', 'Số lượng', initialType === 'INVOICE' ? choice.remaining_quantity : '1', '0.001'],
-      ['unitPrice', 'Đơn giá', choice.unit_price ?? '0', '0.01'],
+      ['unitPrice', 'Đơn giá', choice.unit_cost ?? choice.unit_price ?? '0', '0.01'],
       ['discountPercent', 'Chiết khấu', row.discount, '0.01'],
       ['vatPercent', 'VAT', row.vat, '0.01']
     ].forEach(([key, label, value, step]) => {
@@ -217,16 +223,23 @@ function purchaseDocumentLines(form, controls, initialType) {
     message.textContent = 'Đang tải dữ liệu…';
     try {
       const params = new URLSearchParams({size: '100', search: search.value.trim()});
-      let result;
+      let result, nextChoices;
       if (initialType === 'INVOICE') {
         params.set('vendorId', vendorId);
         result = {rows: await erpGet('/purchase-receipt-lines/available?' + params)};
-        choices = result.rows.map(line => ({...line, id: line.receipt_line_id}));
+        nextChoices = result.rows.map(line => ({...line, id: line.receipt_line_id}));
       } else {
-        result = await erpGet('/tables/items?' + params);
-        choices = result.rows.filter(item => !item.blocked);
+        nextChoices = [];
+        for (let page = 0; ; page++) {
+          params.set('page', String(page));
+          result = await erpGet('/tables/items?' + params);
+          if (request !== version) return;
+          nextChoices.push(...result.rows);
+          if (result.rows.length < 100 || nextChoices.length >= Number(result.total)) break;
+        }
       }
       if (request !== version) return;
+      choices = nextChoices;
       picker.replaceChildren(placeholder);
       choices.forEach(choice => {
         const caption = initialType === 'INVOICE'
@@ -234,11 +247,12 @@ function purchaseDocumentLines(form, controls, initialType) {
           : `${choice.item_no || ''} · ${choice.description || ''}`;
         const option = erpElement('option', caption);
         option.value = choice.id;
+        if (initialType !== 'INVOICE' && choice.blocked === true) { option.disabled = true; option.textContent += ' · Đã khóa'; }
         picker.append(option);
       });
       picker.disabled = false;
       message.textContent = choices.length
-        ? `${choices.length} ${initialType === 'INVOICE' ? 'dòng nhập còn số lượng' : 'mặt hàng'} khả dụng.`
+        ? `${choices.length} ${initialType === 'INVOICE' ? 'dòng nhập còn số lượng' : 'Item từ bảng Items'}.`
         : initialType === 'INVOICE' ? 'Không còn dòng phiếu nhập chưa lập hóa đơn cho nhà cung cấp này.'
           : 'Không có mặt hàng phù hợp.';
     } catch (error) {
@@ -246,23 +260,59 @@ function purchaseDocumentLines(form, controls, initialType) {
     }
   }
   search.addEventListener('input', () => {
+    version++; picker.disabled = true; add.disabled = true;
     clearTimeout(timer);
     timer = setTimeout(lookup, 250);
   });
   picker.addEventListener('change', () => {
-    add.disabled = !choices.some(choice => String(choice.id) === picker.value);
+    add.disabled = !choices.some(choice => String(choice.id) === picker.value && choice.blocked !== true);
   });
-  controls.get('vendor_id')?.addEventListener('change', () => {
+  let selectedVendor = controls.get('vendor_id')?.value || '';
+  controls.get('vendor_id')?.addEventListener('change', async () => {
     if (initialType === 'INVOICE' && rows.length) {
       notifyCustomer('Đã có dòng hóa đơn; không thể đổi nhà cung cấp.');
-      controls.get('vendor_id').value = '';
+      controls.get('vendor_id').value = selectedVendor;
       return;
+    }
+    selectedVendor = controls.get('vendor_id').value;
+    const requestedVendor = selectedVendor;
+    if (!header && requestedVendor) {
+      try {
+        const vendor = (await erpGet('/tables/vendors?filterColumn=id&filterValue=' + encodeURIComponent(requestedVendor))).rows[0];
+        if (vendor && selectedVendor === requestedVendor) for (const name of ['currency_code','payment_terms_code']) {
+          const control = controls.get(name); if (control && vendor[name]) control.value = vendor[name];
+        }
+      } catch (error) { message.textContent = 'Không tải được thiết lập Vendor: ' + error.message; }
     }
     lookup();
   });
   lookup();
+  if (header) (async () => {
+    try {
+      const saved = [];
+      for (let page = 0; ; page++) {
+        const data = await erpGet('/tables/purchase_lines?' + new URLSearchParams({size:'100',page:String(page),filterColumn:'purchase_header_id',filterValue:String(header.id)}));
+        saved.push(...data.rows);
+        if (data.rows.length < 100) break;
+      }
+      for (const line of saved) {
+        if (initialType === 'INVOICE' && !line.purchase_receipt_line_id) throw new Error('Hóa đơn cũ thiếu liên kết phiếu nhập; không thể thay đổi Lines.');
+        addLine({...line, id: initialType === 'INVOICE' ? line.purchase_receipt_line_id : line.item_id,
+          remaining_quantity: line.quantity, receipt_no: '', location_code: line.location_code});
+        const row = rows[rows.length - 1];
+        row.description = line.description;
+        row.quantity.value = line.quantity;
+        row.initialLocation = line.location_code || '';
+        row.locationCode.value = row.initialLocation;
+        fillLocations(row);
+      }
+      savedLinesReady = true;
+      update();
+    } catch (error) { message.textContent = 'Không tải được Lines: ' + error.message; }
+  })();
 
   return () => {
+    if (!savedLinesReady) throw new Error('Chưa tải đầy đủ Lines. Đóng và mở lại chứng từ trước khi lưu.');
     if (!rows.length) {
       section.open = true;
       search.focus();
@@ -303,9 +353,9 @@ function purchaseDocumentLines(form, controls, initialType) {
   };
 }
 
-async function savePurchaseDocument(header, lines) {
-  const response = await fetch(erpApi + '/purchase-documents/with-lines', {
-    method: 'POST',
+async function savePurchaseDocument(header, lines, id = null) {
+  const response = await fetch(erpApi + '/purchase-documents/' + (id == null ? '' : encodeURIComponent(id) + '/') + 'with-lines', {
+    method: id == null ? 'POST' : 'PUT',
     headers: {Accept: 'application/json', 'Content-Type': 'application/json'},
     body: JSON.stringify({header, lines}),
     signal: AbortSignal.timeout(30000)
@@ -314,3 +364,4 @@ async function savePurchaseDocument(header, lines) {
   if (!response.ok) throw new Error(result.message || `Không lưu được Purchase Document (HTTP ${response.status}).`);
   return result;
 }
+

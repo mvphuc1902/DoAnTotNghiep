@@ -2,7 +2,7 @@
 
 Web cần backend Java và PostgreSQL chạy; `mvn test` chỉ chạy kiểm thử, không bật web.
 
-Build bản chạy bằng JDK 26 (dùng đường dẫn `mvn.cmd` của IntelliJ nếu Maven chưa có trong PATH). Trong IntelliJ, đặt Maven Runner JRE thành JDK 26 và reload Maven sau khi thay đổi `pom.xml`:
+Build bản chạy bằng JDK 26 với mục tiêu tương thích Java 25 LTS (dùng đường dẫn `mvn.cmd` của IntelliJ nếu Maven chưa có trong PATH). Trong IntelliJ, đặt Maven Runner JRE thành JDK 26 và reload Maven sau khi thay đổi `pom.xml`:
 
 ```powershell
 $env:JAVA_HOME = "$env:USERPROFILE\.jdks\openjdk-26"

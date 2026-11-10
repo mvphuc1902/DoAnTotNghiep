@@ -7,7 +7,7 @@ final class ErpTables {
     private ErpTables() {}
     static final Map<String, List<String>> COLUMNS = Map.ofEntries(
         Map.entry("sales_setup_codes", List.of("id", "category", "code", "name", "active")),
-        Map.entry("sales_document_lines", List.of("id", "document_type", "document_no", "status", "line_status", "document_date", "customer_no", "item_no", "description", "unit_of_measure", "quantity", "unit_price", "discount_percent", "discount_amount", "vat_percent", "vat_amount", "line_amount", "currency_code", "location_name", "related_document_no", "document_id", "line_no", "source_table", "source_line_id")),
+        Map.entry("sales_document_lines", List.of("id", "document_type", "document_no", "status", "line_status", "document_date", "customer_no", "sell_to_name", "type", "item_no", "description", "unit_of_measure", "quantity", "unit_price", "discount_percent", "discount_amount", "vat_percent", "vat_amount", "line_amount", "line_amount_ex_vat", "currency_code", "location_code", "location_name", "shipment_date", "outstanding_quantity", "related_document_no", "document_id", "line_no", "source_table", "source_line_id")),
         Map.entry("sales_headers", List.of("id", "document_type", "quote_no", "customer_id", "location_id", "order_date", "requested_delivery_date", "currency_code", "payment_terms_code", "payment_method_code", "salesperson_code", "status", "subtotal", "discount_amount", "vat_amount", "total_amount", "notes", "sales_order_id", "related_sales_order_id", "sales_return_id", "sales_invoice_id", "created_at", "updated_at")),
         Map.entry("sales_returns", List.of("id", "return_no", "sales_order_id", "location_id", "return_date", "reason", "status", "received_at", "created_at")),
         Map.entry("sales_return_lines", List.of("id", "return_id", "sales_order_line_id", "item_id", "quantity")),
@@ -21,7 +21,7 @@ final class ErpTables {
         Map.entry("inventory_ledger", List.of("id", "entry_no", "item_id", "product_id", "location_id", "document_type", "document_id", "posting_date", "quantity_in", "quantity_out", "unit_cost", "balance_quantity", "description", "created_at")),
         Map.entry("items", List.of("id", "item_no", "description", "item_category", "item_type", "quantity", "base_unit_of_measure", "unit_price", "unit_cost", "inventory_posting_group", "gen_prod_posting_group", "vat_prod_posting_group", "blocked", "created_at", "updated_at")),
         Map.entry("item_bom", List.of("id", "parent_item_id", "component_item_id", "quantity")),
-        Map.entry("production_orders", List.of("id", "production_no", "item_id", "location_id", "quantity", "status", "notes", "completed_at", "created_at", "updated_at")),
+        Map.entry("production_orders", List.of("id", "production_no", "bom_parent_item_id", "location_id", "quantity", "status", "notes", "completed_at", "created_at", "updated_at")),
         Map.entry("production_components", List.of("id", "production_order_id", "component_item_id", "quantity_per_unit", "consumed_quantity")),
         Map.entry("locations", List.of("id", "code", "name", "address", "created_at", "location_id")),
         Map.entry("payment_allocations", List.of("id", "payment_id", "sales_invoice_id", "purchase_invoice_id", "allocated_amount", "created_at")),

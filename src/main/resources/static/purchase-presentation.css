@@ -1,0 +1,10 @@
+.purchase-document-card .profile-close{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.purchase-document-card .profile-actions{display:flex;flex-wrap:wrap;gap:8px}
+.purchase-document-card .profile-actions button{border:1px solid #d5dfed;border-radius:7px;background:white;color:#36567d;padding:9px 13px;font-size:12px}
+.purchase-document-card .profile-section .sales-lines-scroll{overflow:auto}
+.purchase-action-dialog{background:white;color:#17243b;border:1px solid #e0e7f1;border-radius:12px}
+.purchase-action-dialog h2{font-size:23px;font-weight:650;letter-spacing:-.03em;margin-bottom:12px}
+.purchase-action-dialog label{font-size:12px;color:#475c77}
+.purchase-action-dialog :is(input,select){border:1px solid #d5dfed;border-radius:7px;min-height:40px;padding:10px 12px;color:#203653;background:white}
+.purchase-action-dialog button{padding:9px 15px;border:1px solid #d5dfed;border-radius:7px;margin:8px 8px 0 0}
+.purchase-action-dialog button[type=submit]{background:#2563eb;color:white;border-color:#2563eb}

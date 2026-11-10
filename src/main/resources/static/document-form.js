@@ -53,7 +53,6 @@ function enhanceDocumentForm(dialog) {
   const actions = submit.parentElement; actions.classList.add('document-actions');
   toolbar.append(breadcrumb, actions);
   const heading = node('div', 'document-heading'); heading.append(title);
-  heading.append(node('p', 'document-description', 'Nhập thông tin bên dưới. Kiểm tra các trường bắt buộc trước khi lưu.'));
   const layout = node('div', 'document-layout');
   const content = node('div', 'document-content');
   const sidebar = node('aside', 'document-sidebar');
@@ -64,7 +63,7 @@ function enhanceDocumentForm(dialog) {
   summary.append(sectionLinks);
   const progress = node('p', 'document-progress');
   const values = node('dl', 'document-summary-values');
-  summary.append(progress, values, node('p', 'document-hint', 'Kiểm tra thông tin rồi nhấn Lưu. Các trường có dấu * là bắt buộc.'));
+  summary.append(progress, values);
   sidebar.append(summary);
   // Customer's title lives inside a wrapper with a close button.
   if (titleWrapper && titleWrapper !== toolbar) {

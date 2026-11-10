@@ -35,6 +35,7 @@ public class InventoryBootstrap implements ApplicationRunner {
                 {"sales-lines-v5", "sales-lines-v5.sql"},
                 {"sales-lines-v6", "sales-lines-v6.sql"},
                 {"purchase-documents-v1", "purchase-documents.sql"},
+                {"purchase-items-lookup-v1", "purchase-items-lookup-v1.sql"},
                 {"inventory-admin-delete-v1", "inventory-admin-delete.sql"},
                 {"inventory-admin-delete-v2", "inventory-admin-delete-v2.sql"},
                 {"inventory-admin-delete-v3", "inventory-admin-delete-v3.sql"},
@@ -42,7 +43,13 @@ public class InventoryBootstrap implements ApplicationRunner {
                 {"production-orders-v1", "production-orders.sql"},
                 {"document-numbering-v1", "document-numbering.sql"},
                 {"document-numbering-v2", "document-numbering-v2.sql"},
-                {"sales-quote-renumbering-v1", "sales-quote-renumbering.sql"}}) {
+                {"sales-quote-renumbering-v1", "sales-quote-renumbering.sql"},
+                {"sales-inventory-relations-v7", "sales-inventory-relations-v7.sql"},
+                {"production-order-bom-reference-v2", "production-order-bom-reference-v2.sql"},
+                {"item-production-types-v3", "item-production-types-v3.sql"},
+                {"purchase-return-order-v2", "purchase-return-order-v2.sql"},
+                {"purchase-workflow-v3", "purchase-workflow-v3.sql"},
+                {"sales-shipping-v8", "sales-shipping-v8.sql"}}) {
         if (Boolean.TRUE.equals(jdbc.queryForObject(
                 "SELECT EXISTS (SELECT 1 FROM erp_schema_versions WHERE version=? )", Boolean.class, migration[0]))) continue;
         try (var stream = new ClassPathResource(migration[1]).getInputStream()) {

@@ -16,7 +16,7 @@ const tableLabels = {
   sales_headers: 'Sales',
   sales_document_lines: 'Sales Lines',
   sales_returns: 'Sales Returns · Trả hàng bán', sales_return_lines: 'Dòng trả hàng bán',
-  item_bom: 'Định mức BOM', production_orders: 'Lệnh sản xuất', production_components: 'Linh kiện đã tiêu hao',
+  item_bom: 'Production BOMs', production_orders: 'Production Orders', production_components: 'Consumed Components',
   accounts: 'Chart of Accounts', customer_ledger: 'Customer Ledger',
   customers: 'Customers', employees: 'Employees', general_ledger: 'General Ledger', inventory: 'Inventory',
   inventory_ledger: 'Inventory Ledger', items: 'Mặt hàng (Items)', locations: 'Locations', payment_allocations: 'Payment Allocations',
@@ -41,7 +41,8 @@ const columnLabels = {
   quote_no: 'No.', document_type: 'Loại chứng từ', document_no: 'Document No.', sales_return_id: 'Sales Return Order', sales_invoice_id: 'Sales Invoice',
   return_no: 'Mã phiếu trả', return_id: 'Phiếu trả hàng', return_date: 'Ngày trả hàng', received_at: 'Ngày nhận hàng trả', sales_order_line_id: 'Dòng đơn bán gốc',
   item_code: 'Mã vật tư', item_name: 'Tên vật tư', location_name: 'Tên kho', average_cost: 'Giá vốn bình quân',
-  item_category: 'Type', item_type: 'Origin', parent_item_id: 'Item sản xuất', component_item_id: 'Linh kiện',
+  item_description: 'Tên Item',
+  item_category: 'Inventory Category', item_type: 'Type', parent_item_id: 'Item to manufacture', component_item_id: 'Linh kiện sản xuất',
   production_no: 'Mã lệnh sản xuất', production_order_id: 'Lệnh sản xuất',
   quantity_per_unit: 'Định mức mỗi đơn vị', consumed_quantity: 'Số lượng đã tiêu hao', completed_at: 'Hoàn tất lúc',
   id: 'ID', username: 'Tên đăng nhập', role: 'Vai trò', dashboard_access: 'Cấp quyền xem Dashboard', name: 'Tên', code: 'Mã', description: 'Mô tả', address: 'Địa chỉ', phone: 'Điện thoại', email: 'Email',
@@ -65,7 +66,9 @@ const columnLabels = {
   sales_header_id: 'Đơn bán', vendor_no: 'Mã nhà cung cấp', reason: 'Lý do', rate: 'Thuế suất',
   document_no: 'Số chứng từ', document_date: 'Ngày chứng từ', customer_no: 'Mã khách hàng',
   discount_amount: 'Tiền giảm giá', location_name: 'Tên kho', related_document_no: 'Chứng từ liên quan',
-  line_status: 'Trạng thái dòng'
+  line_status: 'Trạng thái dòng', sell_to_name: 'Sell-to Customer Name', type: 'Type',
+  reserve: 'Reserve', reserved_quantity: 'Reserved Qty. (Base)', shipment_date: 'Shipment Date',
+  outstanding_quantity: 'Outstanding Quantity', line_amount_ex_vat: 'Line Amount Excl. VAT'
 };
 Object.assign(columnLabels, {
   purchase_header_id: 'Purchase Header', source_purchase_line_id: 'Dòng đơn mua gốc', receipt_line_id: 'Dòng phiếu nhập',
@@ -77,7 +80,7 @@ Object.assign(columnLabels, {
   discount_percent: 'Giảm giá (%)', location_code: 'Mã kho'
 });
 let erpCatalog = null;
-const erpReadOnlyTables = new Set(['inventory_ledger', 'production_components', 'sales_lines', 'sales_orders', 'sales_headers', 'sales_document_lines', 'purchase_headers', 'purchase_lines']);
+const erpReadOnlyTables = new Set(['sales_shipments','sales_shipment_lines','purchase_receipts', 'purchase_receipt_lines', 'inventory_ledger', 'production_components', 'sales_lines', 'sales_orders', 'sales_headers', 'sales_document_lines', 'purchase_headers', 'purchase_lines']);
 let erpCatalogPromise = null;
 let erpState = {group: 'database', table: 'customers', page: 0, size: 25, search: '', filterColumn: null, filterValue: null, documentType: null};
 let erpRequestVersion = 0;
@@ -185,7 +188,8 @@ function renderErpNavigation(catalog) {
     [
       ['ORDER', 'Purchase Order'],
       ['QUOTE', 'Purchase Quotes'],
-      ['INVOICE', 'Purchase Invoice']
+      ['INVOICE', 'Purchase Invoice'],
+      ['RETURN_ORDER', 'Purchase Return Order']
     ].forEach(([type, label]) => {
       const button = erpButton('', () => openPurchaseDocuments(type), classes);
       button.dataset.table = 'purchase_headers';
@@ -380,25 +384,6 @@ async function renderErpData() {
       finally { convertingQuote = false; }
     }, 'px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold disabled:opacity-50');
     makeOrder.disabled = true;
-    const selectedSalesLines = new Map();
-    const bulkDeleteLines = salesLineDeleteButton('Xóa dòng đã chọn (0)', async event => {
-      if (!canDeleteRecords() || !selectedSalesLines.size) return;
-      const selected = [...selectedSalesLines.values()];
-      if (!await confirmAction(`Xóa ${selected.length} Sales Lines đã chọn? Thao tác này không thể hoàn tác.`)) return;
-      event.currentTarget.disabled = true;
-      let deleted = 0;
-      let failure = null;
-      for (const line of selected) {
-        try { await erpWrite(line.table, line.id, 'DELETE'); deleted++; }
-        catch (error) { failure = {line, error}; break; }
-      }
-      selectedSalesLines.clear();
-      erpCatalog = null;
-      await renderErpData();
-      if (failure) notifyCustomer(`Đã xóa ${deleted}/${selected.length} dòng. Dòng #${failure.line.id} không xóa được: ${failure.error.message}`);
-      else notifyCustomer(`Đã xóa ${deleted} Sales Lines.`);
-    }, 'px-3 py-2 bg-rose-600 text-white rounded-lg text-sm disabled:opacity-50');
-    bulkDeleteLines.disabled = true;
     const purchaseSelected = new Map();
     const purchaseChecks = [];
     const purchaseSelectAll = erpElement('input'); purchaseSelectAll.type = 'checkbox';
@@ -438,38 +423,52 @@ async function renderErpData() {
     const selectionHint = erpElement('span', 'Chọn báo giá nháp để tạo Sales Order.', 'text-sm text-slate-500');
     selectionHint.setAttribute('role', 'status');
     const salesType = state.filterColumn === 'document_type' ? state.filterValue : state.documentType;
-    const isSalesQuoteList = state.table === 'sales_headers' && salesType === 'QUOTE';
-    const salesQuoteColumnLabels = {
+    const isSalesDocumentList = state.table === 'sales_headers'
+      && ['QUOTE', 'ORDER', 'RETURN_ORDER', 'INVOICE'].includes(salesType);
+    const salesDocumentColumnLabels = {
       quote_no: 'No.',
+      document_type: 'Document Type',
       customer_no: 'Sell-to Customer No.',
       sell_to_name: 'Sell-to Customer Name',
       external_document_no: 'External Document No.',
       sell_to_contact: 'Sell-to Contact',
-      order_date: 'Posting Date',
+      document_date: 'Document Date',
+      order_date: 'Order Date',
       due_date: 'Due Date',
       requested_delivery_date: 'Requested Delivery Date',
       total_amount: 'Amount',
+      status: 'Status',
       location_code: 'Location Code',
       assigned_user_id: 'Assigned User ID',
       quote_valid_until_date: 'Quote Valid To Date'
     };
+    const salesLineColumnLabels = {
+      document_type: 'Document Type',
+      document_no: 'Document No.',
+      customer_no: 'Sell-to Customer No.',
+      sell_to_name: 'Sell-to Customer Name',
+      type: 'Type',
+      item_no: 'No.',
+      description: 'Description',
+      location_code: 'Location Code',
+      quantity: 'Quantity',
+      unit_of_measure: 'Unit of Measure Code',
+      line_amount_ex_vat: 'Line Amount Excl. VAT',
+      shipment_date: 'Shipment Date',
+      outstanding_quantity: 'Outstanding Quantity'
+    };
     const purchaseType = state.table === 'purchase_headers' && state.filterColumn === 'document_type'
       ? state.filterValue : null;
     if (state.table === 'sales_headers' && salesType === 'QUOTE') toolbar.append(makeOrder, selectionHint);
-    if (salesLineTables.has(state.table)) toolbar.append(bulkDeleteLines);
     if (state.table === 'sales_headers' && ['RETURN_ORDER','INVOICE'].includes(salesType)) toolbar.append(erpButton(
       'Thêm ' + salesDocumentTitles[salesType],
       () => openErpForm(salesType === 'RETURN_ORDER' ? 'sales_returns' : 'sales_invoices'),
       'px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm'));
     if (state.table === 'purchase_headers') toolbar.append(erpButton(
-      'Thêm ' + ({ORDER: 'Purchase Order', QUOTE: 'Purchase Quote', INVOICE: 'Purchase Invoice'}[purchaseType] || 'Purchase Order'),
+      'Thêm ' + ({ORDER: 'Purchase Order', QUOTE: 'Purchase Quote', INVOICE: 'Purchase Invoice', RETURN_ORDER: 'Purchase Return Order'}[purchaseType] || 'Purchase Order'),
       () => openErpForm('purchase_headers', null, null, purchaseType || 'ORDER'),
       'px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm'));
-    if (state.table === 'sales_document_lines') toolbar.append(erpButton('Thêm dòng',()=>{
-      const dialog=hrDialog('Thêm Sales Line'),content=erpElement('div',null,'hr-form');content.append(erpElement('h2','Chọn loại dòng chứng từ'));
-      [['sales_quote_lines','Báo giá'],['sales_order_lines','Đơn bán'],['sales_invoice_lines','Hóa đơn'],['sales_return_lines','Trả hàng']].forEach(([table,label])=>content.append(erpButton(label,()=>{dialog.close();openErpForm(table);})));content.append(erpButton('Hủy',()=>dialog.close()));dialog.append(content);dialog.showModal();
-    },'px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm'));
-    const canAddGeneric = state.table === 'sales_headers'
+    const canAddGeneric = salesLineTables.has(state.table) ? false : state.table === 'sales_headers'
       ? !salesType || ['ORDER', 'QUOTE'].includes(salesType)
       : !erpReadOnlyTables.has(state.table);
     if (canAddGeneric) toolbar.append(erpButton(state.table === 'items'
@@ -488,17 +487,23 @@ async function renderErpData() {
       ? ['document_no', 'document_type', 'vendor_name', 'order_date', 'status', 'total_amount']
       : state.table === 'purchase_lines'
       ? ['document_no', 'line_no', 'item_no', 'description', 'quantity', 'unit_price', 'line_amount']
+      : state.table === 'purchase_receipt_lines'
+      ? ['receipt_id', 'line_no', 'item_no', 'item_description', 'quantity', 'unit_of_measure', 'location_code']
       : state.table==='inventory'
       ? ['item_code','item_name','location_name','quantity','reserved_quantity','available_quantity','unit','average_cost']
-      : isSalesQuoteList
-        ? ['quote_no', 'customer_no', 'sell_to_name', 'external_document_no', 'sell_to_contact', 'order_date',
-          'due_date', 'requested_delivery_date', 'total_amount', 'location_code', 'assigned_user_id', 'quote_valid_until_date']
+      : isSalesDocumentList
+        ? ['quote_no', 'document_type', 'customer_no', 'sell_to_name', 'external_document_no', 'sell_to_contact',
+          'location_code', 'document_date', 'order_date', 'due_date', 'requested_delivery_date', 'total_amount', 'status']
       : state.table === 'sales_headers'
         ? ['quote_no', 'customer_no', 'sell_to_name', 'external_document_no', 'location_code', 'assigned_user_id', 'document_date', 'status']
+      : state.table === 'sales_document_lines'
+        ? ['document_type', 'document_no', 'customer_no', 'sell_to_name', 'type', 'item_no', 'description',
+          'location_code', 'quantity', 'unit_of_measure',
+          'line_amount_ex_vat', 'shipment_date', 'outstanding_quantity']
       : state.table==='inventory_ledger'
         ? ['item_name','location_name','document_type','quantity_in','quantity_out','balance_quantity','unit_cost']
         : data.columns.filter(column => !['id', 'created_at', 'updated_at'].includes(column));
-    const visibleColumns = isSalesQuoteList
+    const visibleColumns = isSalesDocumentList || salesLineTables.has(state.table)
       ? leadingColumns.filter(column => data.columns.includes(column))
       : [...new Set([...leadingColumns, ...data.columns])].filter(column => data.columns.includes(column)
       && !hiddenSalesLineMetadata.has(column)
@@ -511,13 +516,17 @@ async function renderErpData() {
     wrapper.tabIndex = 0;
     wrapper.setAttribute('role', 'region');
     wrapper.setAttribute('aria-label', 'Bảng ' + tableLabels[state.table] + ' — cuộn ngang để xem tất cả cột');
-    heading.append(erpElement('th', 'Thao tác', 'px-4 py-3 sticky left-0 bg-slate-100 text-center'));
+    const showRowActions = !salesLineTables.has(state.table)
+      || ['purchase_lines', 'sales_lines', 'sales_order_lines', 'sales_document_lines'].includes(state.table);
+    if (showRowActions) heading.append(erpElement('th', 'Thao tác', 'px-4 py-3 sticky left-0 bg-slate-100 text-center'));
     if (state.table === 'purchase_headers') heading.firstElementChild.prepend(purchaseSelectAll);
     visibleColumns.forEach(column => {
-      const label = isSalesQuoteList ? salesQuoteColumnLabels[column]
-        : state.table === 'sales_document_lines' && column === 'item_no' ? 'No.'
-          : state.table === 'sales_document_lines' && column === 'line_amount' ? 'Thành tiền (VAT)' : null;
-      const th = erpElement('th', label || columnLabels[column] || column, 'px-4 py-3'); th.title = column; heading.append(th);
+      const label = isSalesDocumentList ? salesDocumentColumnLabels[column]
+        : state.table === 'sales_document_lines' ? salesLineColumnLabels[column] : null;
+      const productionOrderColumnLabel = state.table === 'production_orders'
+        ? ({item_id: 'Item to manufacture', bom_parent_item_id: 'Item to manufacture', quantity: 'Số lượng sản xuất'}[column])
+        : null;
+      const th = erpElement('th', label || productionOrderColumnLabel || columnLabels[column] || column, 'px-4 py-3'); th.title = column; heading.append(th);
     });
     head.append(heading);
     const body = erpElement('tbody', null, 'divide-y');
@@ -526,17 +535,11 @@ async function renderErpData() {
       tr.tabIndex = 0;
       tr.setAttribute('aria-label', (state.table === 'sales_headers' ? 'Chọn chứng từ bán ' : 'Xem bản ghi ') + row.id);
       tr.onclick = () => {
-        if (state.table === 'sales_document_lines') {
-          openErpTable('sales_headers', 'id', row.document_id);
-          return;
-        }
         if (state.table !== 'sales_headers') return showErpDetail(state.table, row, data.columns);
         if (convertingQuote) return;
         selectedQuote = row;
         quoteRows.forEach(entry => {
-          const selected = entry.row.id === row.id;
-          entry.radio.checked = selected;
-          entry.tr.classList.toggle('bg-indigo-50', selected);
+          entry.tr.classList.toggle('bg-indigo-50', entry.row.id === row.id);
         });
         makeOrder.disabled = row.document_type !== 'QUOTE' || !!row.sales_order_id || row.status !== 'DRAFT';
         selectionHint.textContent = row.document_type !== 'QUOTE'
@@ -545,6 +548,7 @@ async function renderErpData() {
           : `Đã chọn báo giá ${row.quote_no || row.id}`;
       };
       tr.onkeydown = event => { if (event.target === tr && ['Enter', ' '].includes(event.key)) { event.preventDefault(); tr.click(); } };
+      if (showRowActions) {
       const actions = erpElement('td', null, 'px-3 py-2 sticky left-0 bg-white text-center align-middle');
       if (state.table === 'purchase_headers') {
         const choose = erpElement('input'); choose.type = 'checkbox';
@@ -560,97 +564,52 @@ async function renderErpData() {
         edit.disabled = row.status !== 'DRAFT';
         const remove = erpButton('Xóa', event => { event.stopPropagation(); deleteErpRow('purchase_headers', row, event.currentTarget); });
         remove.disabled = row.status !== 'DRAFT' || !canDeleteRecords();
-        actions.append(choose, edit, remove);
+        actions.append(choose, erpButton('Xem', event => {
+          event.stopPropagation();
+          showErpDetail('purchase_headers', row, data.columns);
+        }), edit, remove);
         syncPurchases();
       }
-      if (salesLineTables.has(state.table)) {
-        const sourceTable = state.table === 'sales_document_lines' ? row.source_table : state.table;
-        const sourceId = state.table === 'sales_document_lines' ? row.source_line_id : row.id;
-        const choose = erpElement('input');
-        choose.type = 'checkbox';
-        choose.disabled = !sourceTable || sourceId == null;
-        if (choose.disabled) choose.title = 'Chứng từ chưa có dòng hàng để chọn; dùng nút Sửa/Xóa chứng từ bên cạnh.';
-        choose.setAttribute('aria-label', `Chọn Sales Line ${sourceId ?? ''} để xóa`);
-        if (!canDeleteRecords()) choose.title = 'Chỉ Administrator hoặc Director mới có quyền xóa Sales Lines.';
-        choose.onclick = event => event.stopPropagation();
-        choose.onchange = () => {
-          const key = `${sourceTable}:${sourceId}`;
-          if (choose.checked) selectedSalesLines.set(key, {table: sourceTable, id: sourceId});
-          else selectedSalesLines.delete(key);
-          bulkDeleteLines.textContent = `Xóa dòng đã chọn (${selectedSalesLines.size})`;
-          bulkDeleteLines.disabled = selectedSalesLines.size === 0 || !canDeleteRecords();
-        };
-        actions.append(choose);
-      }
-      if (state.table === 'sales_document_lines' && !row.source_line_id) {
-        const documentAction = async (event, deleting) => {
-          event.stopPropagation();
-          const button = event.currentTarget;
-          button.disabled = true;
-          try {
-            const headers = await erpGet('/tables/sales_headers?' + new URLSearchParams({size: '1', filterColumn: 'id', filterValue: String(row.document_id)}));
-            const header = headers.rows[0];
-            if (!header) throw new Error('Chứng từ không còn tồn tại. Hãy làm mới danh sách.');
-            const sourceTable = {QUOTE: 'sales_headers', ORDER: 'sales_orders', INVOICE: 'sales_invoices', RETURN_ORDER: 'sales_returns'}[header.document_type];
-            const sourceId = header.document_type === 'QUOTE' ? header.id : header[{ORDER: 'sales_order_id', INVOICE: 'sales_invoice_id', RETURN_ORDER: 'sales_return_id'}[header.document_type]];
-            if (!sourceTable || sourceId == null) throw new Error('Chứng từ chưa có liên kết nguồn hợp lệ.');
-            const records = await erpGet('/tables/' + sourceTable + '?' + new URLSearchParams({size: '1', filterColumn: 'id', filterValue: String(sourceId)}));
-            if (!records.rows.length) throw new Error('Chứng từ gốc không còn tồn tại.');
-            if (deleting) {
-              button.disabled = false;
-              await deleteErpRow(sourceTable, records.rows[0], button, () => renderErpData());
-            } else await openErpForm(sourceTable, records.rows[0], () => renderErpData());
-          } catch (error) { notifyCustomer(error.message); }
-          finally { button.disabled = false; }
-        };
-        const edit = erpButton('Sửa', event => documentAction(event, false));
-        edit.title = 'Chưa có dòng hàng — sửa chứng từ';
-        const remove = salesLineDeleteButton('Xóa', event => documentAction(event, true));
-        remove.title = 'Chưa có dòng hàng — xóa chứng từ';
-        actions.append(edit, remove);
-      }
-      if (state.table === 'sales_document_lines' && row.source_table && row.source_line_id != null) {
-        actions.append(erpButton('Sửa', async event => {
-          event.stopPropagation();
-          try {
-            const source = await erpGet(`/tables/${encodeURIComponent(row.source_table)}?size=1&filterColumn=id&filterValue=${encodeURIComponent(row.source_line_id)}`);
-            if (!source.rows.length) throw new Error('Sales Line không còn tồn tại.');
-            await openErpForm(row.source_table, source.rows[0], () => renderErpData());
-          } catch (error) { notifyCustomer(error.message); }
-        }));
-        actions.append(salesLineDeleteButton('Xóa', event => {
-          event.stopPropagation();
-          deleteErpRow(row.source_table, {id: row.source_line_id}, event.currentTarget, () => renderErpData());
-        }));
-      }
-      if (!erpReadOnlyTables.has(state.table)) actions.append(erpButton('Sửa', event => { event.stopPropagation(); openErpForm(state.table, row); }),
+      if (!erpReadOnlyTables.has(state.table) && !salesLineTables.has(state.table)) actions.append(erpButton('Sửa', event => { event.stopPropagation(); openErpForm(state.table, row); }),
         erpButton('Xóa', event => { event.stopPropagation(); deleteErpRow(state.table, row, event.currentTarget); }));
+      if (state.table === 'purchase_lines') actions.append(erpButton('Xem', event => {
+        event.stopPropagation();
+        showErpDetail(state.table, row, data.columns);
+      }));
+      if (['sales_lines', 'sales_order_lines', 'sales_document_lines'].includes(state.table)) actions.append(erpButton('Xem', event => {
+        event.stopPropagation();
+        showErpDetail(state.table, row, data.columns);
+      }));
       if (state.table === 'sales_headers') {
         const sourceTable={QUOTE:'sales_headers',ORDER:'sales_orders',RETURN_ORDER:'sales_returns',INVOICE:'sales_invoices'}[row.document_type];
         const sourceId=row.document_type==='QUOTE'?row.id:row[{ORDER:'sales_order_id',RETURN_ORDER:'sales_return_id',INVOICE:'sales_invoice_id'}[row.document_type]];
         const action=async(event,deleting)=>{
           event.stopPropagation();const button=event.currentTarget;button.disabled=true;
-          try{const source=await erpGet(`/tables/${sourceTable}?size=1&filterColumn=id&filterValue=${encodeURIComponent(sourceId)}`);if(!source.rows.length)throw new Error('Chứng từ gốc không còn tồn tại.');
+          try{const source=await erpGet(`/tables/${sourceTable}?size=1&filterColumn=id&filterValue=${encodeURIComponent(sourceId)}`);if(!source.rows.length){
+              if(row.document_type==='INVOICE'&&deleting){
+                if(!await confirmAction(`Xóa Sales Invoice ${row.quote_no} bị mất chứng từ nguồn?`))return;
+                const response=await fetch(erpApi+`/sales-form/headers/${encodeURIComponent(row.id)}/orphaned-invoice`,{method:'DELETE',headers:{Accept:'application/json'},signal:AbortSignal.timeout(20000)});
+                if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.message||`Không xóa được Sales Invoice (HTTP ${response.status}).`);}
+                erpCatalog=null;await renderErpData();notifyCustomer(`Đã xóa Sales Invoice ${row.quote_no}.`);return;
+              }
+              throw new Error('Chứng từ gốc không còn tồn tại.');
+            }
             if(deleting){button.disabled=false;await deleteErpRow(sourceTable,source.rows[0],button,()=>renderErpData());}
             else await openErpForm(sourceTable,source.rows[0],()=>renderErpData());
           }catch(error){notifyCustomer(error.message);}finally{button.disabled=false;}
         };
         if(sourceTable&&sourceId!=null){actions.append(erpButton('Sửa',event=>action(event,false)),erpButton('Xóa',event=>action(event,true)));}
-        const radio = erpElement('input', null, 'mr-3');
-        radio.type = 'radio'; radio.name = 'selected-sales-quote'; radio.value = row.id;
-        radio.setAttribute('aria-label', 'Chọn chứng từ bán ' + (row.quote_no || row.id));
-        radio.onchange = () => tr.click();
-        quoteRows.push({row, tr, radio});
-        actions.prepend(radio);
+        quoteRows.push({row, tr});
         actions.append(erpButton('View', event => { event.stopPropagation(); showErpDetail(state.table, row, data.columns); }));
       }
       tr.append(actions);
+      }
       visibleColumns.forEach(column => { const value = erpValue(row[column],column), cell = erpElement('td', value, 'px-4 py-3 max-w-xs truncate'); cell.title = value; tr.append(cell); });
       body.append(tr);
     });
     if (!data.rows.length) {
       const row = erpElement('tr', null), cell = erpElement('td', state.search || state.filterColumn ? 'Không có bản ghi phù hợp.' : 'Bảng này chưa có dữ liệu.', 'p-6 text-slate-500');
-      cell.colSpan = visibleColumns.length + 1; row.append(cell); body.append(row);
+      cell.colSpan = visibleColumns.length + (showRowActions ? 1 : 0); row.append(cell); body.append(row);
     }
     table.append(head, body); wrapper.append(table); panel.append(wrapper);
     const pages = Math.max(1, Math.ceil(data.total / state.size));
@@ -710,6 +669,7 @@ function erpNormalizePrice(value) {
 }
 function erpValue(value,column='') {
   if (value === null || value === undefined) return '—';
+  if (column === 'location_code') return erpLocationCode(value);
   if (column === 'document_type') return ({
     ORDER: 'Order', QUOTE: 'Quote', INVOICE: 'Invoice',
     RETURN_ORDER: 'Return', RETURN: 'Return', CREDIT_MEMO: 'Credit Memo'
@@ -717,11 +677,14 @@ function erpValue(value,column='') {
   if (column === 'line_status') return value === 'MISSING' ? 'Chưa có dòng' : 'Có dòng';
   if (typeof value === 'boolean') return value ? 'Có' : 'Không';
   if(column==='item_category')return ({INVENTORY:'Inventory',SERVICE:'Service',NON_INVENTORY:'Non-Inventory'})[value]||String(value);
-  if(column==='item_type')return ({PURCHASED:'Purchased',MANUFACTURED:'Manufactured'})[value]||String(value);
+  if(column==='item_type')return ({DEFAULT:'Default',MANUFACTURED:'Sản xuất',PRODUCTION_COMPONENT:'Linh kiện sản xuất'})[value]||String(value);
   if(/^(unit_price|unit_cost|average_cost|purchase_price|sale_price)$/.test(column))return erpPrice(value);
   if(/^(subtotal|balance|debit|credit|amount|.*_amount)$/.test(column))return erpDecimal(value,true);
   if(/quantity|^(consumed_quantity|quantity_per_unit|vat_rate|discount_percent|vat_percent)$/.test(column))return erpDecimal(value);
   return String(value);
+}
+function erpLocationCode(value) {
+  return value == null ? '' : String(value).split(/\s*·\s*/, 1)[0];
 }
 function showPurchaseDocumentLines(detail, header) {
   const section = erpElement('section', null, 'profile-section');
@@ -762,19 +725,25 @@ function showPurchaseDocumentLines(detail, header) {
 }
 function showErpDetail(table, row, columns) {
   const dialog = document.getElementById('erp-detail-dialog');
-  const isSalesDocument = table === 'sales_headers' || table === 'sales_orders';
-  const detail = isSalesDocument ? document.getElementById('tab-data') : dialog;
+  const isSalesDocument = ['sales_headers', 'sales_orders', 'sales_invoices', 'sales_returns'].includes(table);
+  const isPurchaseDocument = ['purchase_headers','purchase_receipts','purchase_returns'].includes(table);
+  const isDocumentCard = isSalesDocument || isPurchaseDocument;
+  const detail = isDocumentCard ? document.getElementById('tab-data') : dialog;
   detail.classList.add('profile-card');
-  if (isSalesDocument) detail.replaceChildren();
+  if (isDocumentCard) detail.replaceChildren();
+  detail.classList.toggle('purchase-document-card', isPurchaseDocument);
   const closeBar = profileElement('div', null, 'profile-close');
-  closeBar.append(profileAction(isSalesDocument ? '← Quay lại danh sách' : 'Đóng hồ sơ ×',
-    () => isSalesDocument ? renderErpData() : dialog.close()));
+  closeBar.append(profileAction(isDocumentCard ? '← Quay lại danh sách' : 'Đóng hồ sơ ×',
+    () => isDocumentCard ? renderErpData() : dialog.close()));
   const name = row.item_name || row.vendor_name || row.name || row.account_name || row.description || tableLabels[table];
   const code = row.customer_no || row.quote_no || row.order_no || row.invoice_no || row.document_no || row.code || row.item_no || row.vendor_no || row.entry_no || ('ID ' + row.id);
   const status = row.status || (row.blocked != null ? (row.blocked ? 'Tạm khóa' : 'Đang hoạt động') : row.active != null ? (row.active ? 'Hoạt động' : 'Ngừng hoạt động') : null);
   const header = profileHeader(tableLabels[table] + ' · Hồ sơ chi tiết', name, code, status, row.blocked === true || row.active === false || (row.status && !['OPEN', 'POSTED', 'INVOICED'].includes(row.status)));
   header.querySelector('h2').id = 'erp-detail-title';
   detail.replaceChildren(closeBar, header);
+  mountDocumentHeader(closeBar, {table, row});
+  if(isSalesDocument) salesShippingActions(detail,table,row);
+  if (table === 'purchase_headers') showPurchaseWorkflow(detail, row);
   if (table === 'sales_headers') {
     if (row.document_type === 'QUOTE') {
       const quoteActions = erpElement('div', null, 'profile-actions');
@@ -795,7 +764,10 @@ function showErpDetail(table, row, columns) {
     const group = /phone|email|address|city/.test(column) ? 'Thông tin liên hệ'
       : /amount|price|cost|quantity|balance|debit|credit|rate|percent|subtotal|currency|payment_terms|payment_method/.test(column) ? 'Thông tin tài chính & số lượng'
       : /_at$|_date$/.test(column) ? 'Thời gian & theo dõi' : 'Thông tin chung';
-    groups[group].push([columnLabels[column] || column, row[column] == null ? null : erpValue(row[column],column)]);
+    const label = table === 'production_orders'
+      ? ({item_id: 'Item to manufacture', bom_parent_item_id: 'Item to manufacture', quantity: 'Số lượng sản xuất'}[column] || columnLabels[column] || column)
+      : columnLabels[column] || column;
+    groups[group].push([label, row[column] == null ? null : erpValue(row[column],column)]);
   });
   Object.entries(groups).forEach(([title, fields]) => {
     if (fields.length) detail.append(profileSection(title, fields));
@@ -816,6 +788,18 @@ function showErpDetail(table, row, columns) {
   if (!links.children.length) links.append(erpElement('p', 'Chưa có liên kết dữ liệu được khai báo.', 'text-sm text-slate-500'));
   related.append(links);
   const actions = profileElement('div', null, 'profile-actions');
+  if (table === 'purchase_headers') {
+    const editable = row.status === 'DRAFT';
+    const edit = profileAction('Sửa chứng từ', () => openErpForm(table, row), 'primary');
+    edit.disabled = !editable;
+    if (!editable) edit.title = 'Chỉ sửa được chứng từ ở trạng thái Nháp.';
+    const remove = profileAction('Xóa chứng từ', event => deleteErpRow(table, row, event.currentTarget), 'danger');
+    remove.disabled = !editable || !canDeleteRecords();
+    remove.title = !editable
+      ? 'Chỉ xóa được chứng từ ở trạng thái Nháp.'
+      : !canDeleteRecords() ? 'Chỉ Administrator hoặc Director mới có quyền xóa.' : '';
+    actions.append(edit, remove);
+  }
   if (table === 'sales_returns' && row.status === 'DRAFT') {
     actions.append(profileAction('Thêm dòng trả hàng', async () => {
       await openErpTable('sales_return_lines', 'return_id', row.id); openErpForm('sales_return_lines');
@@ -834,7 +818,7 @@ function showErpDetail(table, row, columns) {
   if (!erpReadOnlyTables.has(table) && !(table === 'sales_returns' && row.status !== 'DRAFT')) actions.append(profileAction('Chỉnh sửa hồ sơ', () => { dialog.close(); openErpForm(table, row); }, 'primary'),
     profileAction('Xóa bản ghi', event => deleteErpRow(table, row, event.currentTarget), 'danger'));
   detail.append(related, actions);
-  if (!isSalesDocument) dialog.showModal();
+  if (!isDocumentCard) dialog.showModal();
 }
 
 const customerInfo = document.querySelector('#tab-customers .flex.gap-2');

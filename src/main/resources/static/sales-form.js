@@ -83,7 +83,7 @@ function appendSalesDocumentActions(form,table,row,headerId) {
   if(table==='sales_headers'&&row.document_type==='QUOTE') {
     if(!row.sales_order_id&&['DRAFT','RELEASED'].includes(row.status)) action(row.status==='DRAFT'?'Release':'Reopen',
       '/api/erp/sales-form/headers/'+headerId+'/release?reopen='+(row.status==='RELEASED'),async()=>{erpEditDialog.close();await renderErpData()});
-    action('Make Invoice','/api/erp/sales-quotes/'+headerId+'/make-invoice',async result=>{erpEditDialog.close();await openErpTable('sales_headers','sales_invoice_id',result.id)});
+    if(!row.sales_order_id) action('Make Order','/api/erp/sales-quotes/'+headerId+'/make-order',async result=>{erpEditDialog.close();await openErpTable('sales_headers','sales_order_id',result.id)});
   }
 }
 
@@ -92,14 +92,20 @@ async function appendSavedSalesLines(form,headerId) {
   const section=erpElement('details',null,'document-section sales-document');section.open=true;
   section.append(erpElement('summary','Sales Lines'));
   const table=erpElement('table'),head=erpElement('tr');
-  const captions={item_no:'No.',description:'Description',unit_of_measure:'Unit of Measure',quantity:'Quantity',unit_price:'Unit Price (VND)',discount_percent:'Line Discount %',vat_percent:'VAT %'};
-  Object.values(captions).forEach(c=>head.append(erpElement('th',c)));const thead=erpElement('thead');thead.append(head);table.append(thead);
+  const captions={document_type:'Document Type',document_no:'Document No.',customer_no:'Sell-to Customer No.',sell_to_name:'Sell-to Customer Name',item_no:'No.',description:'Description',location_code:'Location Code',unit_of_measure:'Unit of Measure Code',quantity:'Quantity',unit_price:'Unit Price (VND)',discount_percent:'Line Discount %',vat_percent:'VAT %',line_amount_ex_vat:'Line Amount Excl. VAT',line_amount:'Line Amount Incl. VAT'};
+  Object.values(captions).forEach(c=>head.append(erpElement('th',c,'p-2')));const thead=erpElement('thead',null,'bg-slate-100');thead.append(head);table.append(thead);
   const body=erpElement('tbody');table.append(body);const scroll=erpElement('div',null,'sales-lines-scroll');scroll.append(table);section.append(scroll);
   form.querySelector('.document-content').append(section);
   try{
-    const lines=await erpGet('/sales-quotes/'+encodeURIComponent(headerId)+'/lines');
-    lines.forEach(line=>{const row=erpElement('tr');Object.keys(captions).forEach(key=>row.append(erpElement('td',erpValue(line[key]??(key==='item_no'?line.item_id:''),key))));body.append(row)});
-    if(!lines.length)section.append(erpElement('p','Chưa có dòng vật tư.','document-hint'));
+    let page=0,total=0;
+    do{
+      const lines=await erpGet('/tables/sales_document_lines?'+new URLSearchParams({
+        size:'100',page:String(page),filterColumn:'document_id',filterValue:String(headerId)
+      }));
+      lines.rows.forEach(line=>{const row=erpElement('tr');Object.keys(captions).forEach(key=>row.append(erpElement('td',erpValue(line[key],key),'p-2')));body.append(row)});
+      total=lines.total;page++;
+    }while(body.children.length<total);
+    if(!total)section.append(erpElement('p','Chưa có dòng vật tư.','document-hint'));
   }catch(error){section.append(erpElement('p','Không tải được Sales Lines: '+error.message,'document-hint'))}
 }
 
@@ -110,17 +116,19 @@ function arrangeSalesForm(form) {
   const general=find('General')?.querySelector('.document-fields');
   if(general) {
     const fields=new Map([...general.children].map(label=>[label.querySelector('[name]')?.name,label]));
-    const left=['quote_no','order_no','return_no','customer_id','sell_to_name','external_document_no','sell_to_address','sell_to_address_2','sell_to_city','sell_to_state','sell_to_post_code','sell_to_country_code','sell_to_contact_no','sell_to_phone','sell_to_mobile','sell_to_email','sell_to_contact','customer_template_code'];
-    const right=['archived_versions','order_date','document_date','quote_valid_until_date','posting_date','vat_date','due_date','requested_delivery_date','promised_delivery_date','your_reference','salesperson_code','campaign_no','opportunity_no','responsibility_center','assigned_user_id','status'];
+    const left=['quote_no','order_no','return_no','invoice_no','customer_id','sell_to_name','external_document_no','sell_to_address','sell_to_address_2','sell_to_city','sell_to_state','sell_to_post_code','sell_to_country_code','sell_to_contact_no','sell_to_phone','sell_to_mobile','sell_to_email','sell_to_contact','customer_template_code'];
+    const right=['archived_versions','order_date','invoice_date','document_date','quote_valid_until_date','posting_date','vat_date','due_date','requested_delivery_date','promised_delivery_date','your_reference','salesperson_code','campaign_no','opportunity_no','responsibility_center','assigned_user_id','status'];
     const columns=[left,right].map(names=>names.filter(name=>fields.has(name)));
     for(let i=0;i<Math.max(...columns.map(c=>c.length));i++)for(const column of columns){const name=column[i];if(name){general.append(fields.get(name));fields.delete(name)}}
     fields.forEach(field=>general.append(field));
   }
-  const lines=form.querySelector('.sales-document')||form.querySelector('[data-sales-source-lines]');
+  const lines=form.querySelector('[data-sales-source-lines]')||form.querySelector('.sales-document');
   for(const name of ['General','Lines & Totals','Invoice Details','Shipping and Billing','System Information']) {
     const section=find(name);if(section)content.append(section);
     if(name==='General'&&lines)content.append(lines);
   }
   form.classList.add('bc-sales-form');
-  form.querySelector('.document-breadcrumb').textContent='Sales / Chứng từ bán hàng';
+  const heading=form.querySelector('.document-heading h2')?.textContent
+    ?.replace(/^(Thêm|Sửa)\s+/,'').replace(/^Sales\s+/i,'').trim();
+  form.querySelector('.document-breadcrumb').textContent=`Sales ${heading||'Chứng từ bán hàng'}`;
 }

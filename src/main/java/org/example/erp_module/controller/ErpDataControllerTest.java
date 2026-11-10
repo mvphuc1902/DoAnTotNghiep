@@ -18,6 +18,8 @@ class ErpDataControllerTest {
         assertThrows(ResponseStatusException.class, () -> controller.rows("pg_authid", 0, 25, "", null, null));
         assertThrows(ResponseStatusException.class, () -> controller.rows("users", 0, 25, "", "password", "secret"));
         assertFalse(ErpTables.COLUMNS.get("users").contains("password"));
+        assertTrue(ErpTables.COLUMNS.get("production_orders").contains("bom_parent_item_id"));
+        assertFalse(ErpTables.COLUMNS.get("production_orders").contains("item_id"));
         verifyNoInteractions(jdbc);
     }
 
@@ -27,6 +29,59 @@ class ErpDataControllerTest {
         assertThrows(ResponseStatusException.class, () -> controller.rows("items", 0, 101, "", null, null));
         verifyNoInteractions(jdbc);
     }
+
+    @Test
+    void purchaseItemLookupReturnsUnblockedItemsWithBoundSearchAndPaging() {
+        when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(1L);
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", 42L);
+        item.put("item_no", "ITEM-042");
+        item.put("description", "Steel");
+        item.put("unit_cost", new BigDecimal("125.50"));
+        when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(new ArrayList<>(List.of(item)));
+        String search = "ITEM' OR 1=1 --";
+
+        Map<String, Object> result = controller.purchaseItems(1, 25, search);
+
+        assertEquals(1L, result.get("total"));
+        assertEquals(1, result.get("page"));
+        assertEquals(25, result.get("size"));
+        assertEquals("42", item.get("id"));
+        org.mockito.ArgumentCaptor<String> sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.ArgumentCaptor<Object[]> parameters = org.mockito.ArgumentCaptor.forClass(Object[].class);
+        verify(jdbc).queryForList(sql.capture(), parameters.capture());
+        assertTrue(sql.getValue().contains("FROM public.items item"));
+        assertTrue(sql.getValue().contains("NOT coalesce(item.blocked, false)"));
+        assertTrue(sql.getValue().contains("item.unit_cost"));
+        assertTrue(sql.getValue().contains("ORDER BY item.item_no, item.id LIMIT ? OFFSET ?"));
+        assertFalse(sql.getValue().contains(search));
+        assertArrayEquals(new Object[]{search, 25, 25L}, parameters.getValue());
+        assertThrows(ResponseStatusException.class, () -> controller.purchaseItems(-1, 25, ""));
+        assertThrows(ResponseStatusException.class, () -> controller.purchaseItems(0, 101, ""));
+        assertThrows(ResponseStatusException.class, () -> controller.purchaseItems(0, 25, "x".repeat(201)));
+    }
+
+    @Test
+    void productionOrderItemsAreDistinctActiveItemsAndSearchIsBound() {
+        when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(new ArrayList<>());
+
+        controller.productionOrderItems("PRO-01");
+
+        org.mockito.ArgumentCaptor<String> sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.ArgumentCaptor<Object[]> parameters = org.mockito.ArgumentCaptor.forClass(Object[].class);
+        verify(jdbc).queryForList(sql.capture(), parameters.capture());
+        assertTrue(sql.getValue().contains("FROM public.production_orders production"));
+        assertTrue(sql.getValue().contains("JOIN public.items item ON item.id = production.bom_parent_item_id"));
+        assertTrue(sql.getValue().contains("item.item_type = 'MANUFACTURED'"));
+        assertTrue(sql.getValue().contains("item.item_category = 'INVENTORY'"));
+        assertTrue(sql.getValue().contains("row_number() OVER"));
+        assertTrue(sql.getValue().contains("NOT coalesce(item.blocked, false)"));
+        assertFalse(sql.getValue().contains("PRO-01"));
+        assertArrayEquals(new Object[]{"PRO-01", "PRO-01"}, parameters.getValue());
+        assertThrows(ResponseStatusException.class,
+                () -> controller.productionOrderItems("x".repeat(201)));
+    }
+
     @Test
     void productsAndCategoriesAreNotExposedInCatalogOrCrud() {
         for(String table:List.of("product","category")) {
@@ -49,6 +104,38 @@ class ErpDataControllerTest {
         verify(jdbc).queryForList(argThat(sql->sql.contains("LEFT JOIN items item ON item.id=stock.item_id")
             &&sql.contains("AS item_name")&&sql.contains("CAST(\"item_name\" AS text)")&&!sql.contains("Laptop")),any(Object[].class));
         assertFalse(ErpTables.COLUMNS.get("inventory").contains("item_name"));
+    }
+
+    @Test
+    void purchaseReceiptLinesIncludeItemDetailsFromItems() {
+        when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(0L);
+        when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(new ArrayList<>());
+
+        Map<String, Object> result = controller.rows("purchase_receipt_lines", 0, 25, "ITEM-01", null, null);
+
+        assertTrue(((List<?>) result.get("columns")).containsAll(List.of("item_no", "item_description")));
+        org.mockito.ArgumentCaptor<String> sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(jdbc).queryForList(sql.capture(), any(Object[].class));
+        assertTrue(sql.getValue().contains("LEFT JOIN public.items item ON item.id=line.item_id"));
+        assertTrue(sql.getValue().contains("AS item_description"));
+        assertTrue(sql.getValue().contains("CAST(\"item_description\" AS text)"));
+    }
+
+    @Test
+    void catalogExposesPurchaseLineItemLookupRelation() {
+        when(jdbc.queryForList(anyString(), eq(String.class))).thenReturn(new ArrayList<>());
+        when(jdbc.queryForList(anyString())).thenReturn(new ArrayList<>(List.of(Map.of(
+                "source_table", "purchase_lines",
+                "source_column", "item_id",
+                "target_table", "items",
+                "target_column", "id"))));
+        when(jdbc.queryForObject(anyString(), eq(Long.class))).thenReturn(0L);
+
+        Map<String, Object> catalog = controller.catalog();
+
+        assertTrue(((List<Map<String, Object>>) catalog.get("relations")).stream().anyMatch(relation ->
+                relation.equals(Map.of("source_table", "purchase_lines", "source_column", "item_id",
+                        "target_table", "items", "target_column", "id"))));
     }
 
     @Test
@@ -124,6 +211,22 @@ class ErpDataControllerTest {
     }
 
     @Test
+    void salesOrderLineLookupIncludesItemNumberForSalesDocumentForms() {
+        when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(0L);
+        when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(new ArrayList<>());
+
+        Map<String, Object> result = controller.rows("sales_order_lines", 0, 25, "", null, null);
+
+        assertTrue(((List<?>) result.get("columns")).containsAll(List.of("item_no", "item_category", "location_code")));
+        org.mockito.ArgumentCaptor<String> sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(jdbc).queryForList(sql.capture(), any(Object[].class));
+        assertTrue(sql.getValue().contains("item.item_no"));
+        assertTrue(sql.getValue().contains("item.item_category"));
+        assertTrue(sql.getValue().contains("LEFT JOIN public.items item ON item.id=line.item_id"));
+        assertTrue(sql.getValue().contains("LEFT JOIN public.locations location ON location.id=header.location_id"));
+    }
+
+    @Test
     void salesHeadersIncludeCustomerCodeAndLocationCodeInsteadOfDisplayingIds() {
         when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(1L);
         when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(new ArrayList<>());
@@ -137,8 +240,54 @@ class ErpDataControllerTest {
         org.mockito.ArgumentCaptor<String> sql = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(jdbc).queryForList(sql.capture(), any(Object[].class));
         assertTrue(sql.getValue().contains("customer.customer_no AS customer_no"));
-        assertTrue(sql.getValue().contains("location.code AS location_code"));
+        assertTrue(sql.getValue().contains("nullif(location.code,'') AS location_code"));
+        assertFalse(sql.getValue().contains("location.name,'')) AS location_code"));
         assertTrue(sql.getValue().contains("LEFT JOIN public.customers customer ON customer.id=header.customer_id"));
         assertTrue(sql.getValue().contains("LEFT JOIN public.locations location ON location.id=header.location_id"));
+    }
+
+    @Test
+    void salesLinesExposeBusinessColumnsAndOnlyReturnLocationCode() {
+        when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(0L);
+        when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(new ArrayList<>());
+
+        Map<String, Object> result = controller.rows("sales_document_lines", 0, 25, "", null, null);
+
+        assertTrue(((List<?>) result.get("columns")).containsAll(List.of(
+                "document_type", "document_no", "customer_no", "sell_to_name", "type",
+                "item_no", "description", "location_code", "quantity",
+                "unit_of_measure", "line_amount_ex_vat",
+                "shipment_date", "outstanding_quantity")));
+        org.mockito.ArgumentCaptor<String> sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(jdbc).queryForList(sql.capture(), any(Object[].class));
+        assertTrue(sql.getValue().contains("nullif(location.code,'') AS location_code"));
+        assertFalse(sql.getValue().contains("location.name,'')) AS location_code"));
+        assertTrue(sql.getValue().contains("coalesce(nullif(header.sell_to_name,''),customer.name) AS sell_to_name"));
+        assertTrue(sql.getValue().contains("AS line_amount_ex_vat"));
+        assertTrue(sql.getValue().contains("AS outstanding_quantity"));
+        assertTrue(sql.getValue().contains("header.shipment_date"));
+    }
+
+    @Test
+    void convertedQuotesAreExcludedFromTheSalesQuotesListOnly() {
+        when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(0L);
+        when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(new ArrayList<>());
+
+        controller.rows("sales_headers", 0, 25, "", "document_type", "QUOTE");
+
+        org.mockito.ArgumentCaptor<String> quoteSql = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(jdbc).queryForList(quoteSql.capture(), any(Object[].class));
+        assertTrue(quoteSql.getValue().contains("CAST(\"document_type\" AS text) = ?"));
+        assertTrue(quoteSql.getValue().contains("\"status\" <> 'CONVERTED'"));
+
+        reset(jdbc);
+        when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(0L);
+        when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(new ArrayList<>());
+
+        controller.rows("sales_headers", 0, 25, "", "document_type", "ORDER");
+
+        org.mockito.ArgumentCaptor<String> orderSql = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(jdbc).queryForList(orderSql.capture(), any(Object[].class));
+        assertFalse(orderSql.getValue().contains("\"status\" <> 'CONVERTED'"));
     }
 }

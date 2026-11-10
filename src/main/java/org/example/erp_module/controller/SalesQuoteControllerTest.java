@@ -53,32 +53,6 @@ class SalesQuoteControllerTest {
     private final SalesOrderServiceImpl orders = mock(SalesOrderServiceImpl.class);
     private final SalesQuoteController controller = new SalesQuoteController(jdbc, orders);
 
-    @Test void shortageIdentifiesItemAndWarehouseWithoutCreatingOrder() {
-        when(jdbc.queryForList("SELECT * FROM sales_headers WHERE id=? FOR UPDATE", 7L))
-            .thenReturn(List.of(Map.of("document_type", "QUOTE", "status", "DRAFT", "location_id", 3L)));
-        when(jdbc.queryForList(contains("AS requested_quantity"), eq(7L), eq(3L)))
-            .thenReturn(List.of(Map.of("item_no", "ITEM-01", "warehouse_code", "MAIN",
-                    "requested_quantity", new BigDecimal("10"), "available_quantity", new BigDecimal("2"))));
-        var error = assertThrows(ResponseStatusException.class, () -> controller.makeOrder(7));
-        assertTrue(error.getReason().contains("ITEM-01 tại kho MAIN: cần 10, còn 2"));
-        verifyNoInteractions(orders);
-    }
-
-    @Test void shortageMessageDoesNotShowTrailingDecimalZerosForWholeQuantities() {
-        when(jdbc.queryForList("SELECT * FROM sales_headers WHERE id=? FOR UPDATE", 7L))
-            .thenReturn(List.of(Map.of("document_type", "QUOTE", "status", "DRAFT", "location_id", 3L)));
-        when(jdbc.queryForList(contains("AS requested_quantity"), eq(7L), eq(3L)))
-            .thenReturn(List.of(Map.of("item_no", "ITEM-01", "warehouse_code", "MAIN",
-                    "requested_quantity", new BigDecimal("1.000"), "available_quantity", new BigDecimal("0.000"))));
-
-        var error = assertThrows(ResponseStatusException.class, () -> controller.makeOrder(7));
-
-        assertTrue(error.getReason().contains("ITEM-01 tại kho MAIN: cần 1, còn 0"));
-        assertFalse(error.getReason().contains("1.000"));
-        assertFalse(error.getReason().contains("0.000"));
-        verifyNoInteractions(orders);
-    }
-
     @Test void databaseStockErrorIsNotHiddenByGenericMessage() {
         var error = new org.springframework.dao.DataIntegrityViolationException("insert failed",
                 new java.sql.SQLException("ERROR: STOCK: Không đủ tồn kho khả dụng.\nWhere: trigger", "23514"));
@@ -103,6 +77,7 @@ class SalesQuoteControllerTest {
             order.setId(42L); return order;
         });
         var result = controller.makeOrder(7);
+        verify(jdbc,never()).queryForList(contains("AS requested_quantity"), any(Object[].class));
         assertEquals("42", result.get("id"));
         assertEquals("SO-001", result.get("documentNo"));
         assertEquals(java.time.LocalDate.now().toString(), result.get("postingDate"));
