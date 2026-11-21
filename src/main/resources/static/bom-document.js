@@ -24,10 +24,10 @@ async function openBomDocument(row = null) {
   add.disabled = true;
   tools.append(search, picker, add);
   const scroll = erpElement('div', null, 'sales-lines-scroll'), table = erpElement('table'), head = erpElement('thead'), tr = erpElement('tr');
-  ['Component No.', 'Component Name', 'Unit', 'Quantity per manufactured item', 'Action'].forEach(label => tr.append(erpElement('th', label)));
+  ['Component No.', 'Component Name', 'Unit', 'Số lượng / 1 sản phẩm', 'Tồn khả dụng (tổng các kho)', 'Kiểm tra tồn', 'Action'].forEach(label => tr.append(erpElement('th', label)));
   head.append(tr); const body = erpElement('tbody'); table.append(head, body); scroll.append(table);
   const status = erpElement('p', 'Chọn Item sản xuất ở trên để thêm thành phần.', 'document-hint'); status.setAttribute('role', 'status');
-  section.append(tools, scroll, status); form.querySelector('.document-content').append(section);
+  section.append(tools, scroll, erpElement('p', 'Tồn khả dụng đã trừ giữ chỗ, cộng tất cả kho và đối chiếu định mức cho 1 sản phẩm. Thiếu tồn vẫn lưu được BOM; khi sản xuất cần kiểm tra lại số lượng và kho thực tế.', 'document-hint'), status); form.querySelector('.document-content').append(section);
   unifiedLookup(search, picker);
   let lines = [], expected = [], materials = [], selectedParent = '', dirty = false, loading = false, materialsLoading = false, materialVersion = 0, parentVersion = 0;
   const alive = () => version === erpFormVersion && erpEditDialog.open;
@@ -82,7 +82,42 @@ async function openBomDocument(row = null) {
     const line = {componentId: String(item.component_id)}, tr = erpElement('tr');
     tr.append(erpElement('td', item.item_no || item.component_id), erpElement('td', item.description || '—'), erpElement('td', item.base_unit_of_measure || '—'));
     const td = erpElement('td'), quantity = erpElement('input'); quantity.type = 'number'; quantity.min = '0.001'; quantity.step = '0.001'; quantity.max = '999999999999999.999'; quantity.required = true; quantity.value = item.quantity;
-    quantity.setAttribute('aria-label', 'Định mức ' + (item.description || item.item_no)); quantity.oninput = () => { dirty = true; }; line.quantity = quantity; td.append(quantity); tr.append(td);
+    quantity.setAttribute('aria-label', 'Định mức ' + (item.description || item.item_no)); quantity.oninput = () => { dirty = true; updateAvailability(); }; line.quantity = quantity; td.append(quantity); tr.append(td);
+    const stockCell = erpElement('td', 'Đang tải…'), stockStatus = erpElement('td');
+    stockStatus.setAttribute('role', 'status'); tr.append(stockCell, stockStatus);
+    let available = null;
+    function updateAvailability() {
+      if (available === null) return;
+      const amount = quantity.valueAsNumber;
+      const shortage = Math.round((amount - available) * 1000) / 1000;
+      stockStatus.textContent = !Number.isFinite(amount) || amount <= 0 ? 'Nhập số lượng lớn hơn 0'
+        : shortage > 0 ? 'Thiếu ' + shortage.toLocaleString('vi-VN', {maximumFractionDigits: 3}) + ' — vẫn có thể lưu BOM'
+        : 'Đủ cho 1 sản phẩm';
+      stockStatus.className = shortage > 0 ? 'text-amber-700' : '';
+    }
+    (async () => {
+      try {
+        let total = 0;
+        for (let page = 0; ; page++) {
+          const data = await erpGet('/tables/inventory?' + new URLSearchParams({size: 100, page,
+            filterColumn: 'item_id', filterValue: line.componentId}));
+          if (!alive() || !lines.includes(line)) return;
+          for (const stock of data.rows) {
+            const value = stock.available_quantity ?? (Number(stock.quantity) - Number(stock.reserved_quantity || 0));
+            if (!Number.isFinite(Number(value))) throw new Error('Invalid inventory quantity');
+            total += Number(value);
+          }
+          if (data.rows.length < 100 || (page + 1) * 100 >= Number(data.total)) break;
+        }
+        available = Math.round(total * 1000) / 1000;
+        stockCell.textContent = available.toLocaleString('vi-VN', {maximumFractionDigits: 3});
+        updateAvailability();
+      } catch (failure) {
+        if (!alive() || !lines.includes(line)) return;
+        stockCell.textContent = 'Chưa tải được';
+        stockStatus.textContent = 'Chưa thể kiểm tra tồn kho. Mở lại BOM để thử lại.';
+      }
+    })();
     const action = erpElement('td'), remove = erpButton('Remove', () => {
       lines = lines.filter(value => value !== line);
       tr.remove();
@@ -124,6 +159,7 @@ async function openBomDocument(row = null) {
     updateComponentPicker();
     selectedParent = id;
     try {
+      mountDocumentHeader(actions, {table:'item_bom',row:id?{id,parent_item_id:id}:null});
       if (!id) { status.textContent = 'Chọn Item sản xuất để xem hoặc tạo BOM.'; return; }
       const data = await erpGet('/bom/' + encodeURIComponent(id));
       if (!alive() || selectedParent !== id) return;

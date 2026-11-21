@@ -467,6 +467,13 @@ public class ErpWriteController {
         return jdbc.queryForList("SELECT b.component_item_id::text AS component_id,b.quantity::text AS quantity,i.item_no,i.description,i.base_unit_of_measure FROM item_bom b JOIN items i ON i.id=b.component_item_id WHERE b.parent_item_id=? ORDER BY b.component_item_id", parentId);
     }
 
+    @DeleteMapping("/bom/{parentId}")
+    @Transactional
+    public void deleteBom(@PathVariable long parentId) {
+        jdbc.execute("SELECT pg_advisory_xact_lock(7821348)");
+        jdbc.update("DELETE FROM item_bom WHERE parent_item_id=?", parentId);
+    }
+
     @PutMapping("/bom/{parentId}")
     @Transactional
     public Map<String, Object> saveBom(@PathVariable long parentId, @RequestBody BomDocument document) {

@@ -382,12 +382,13 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
         for(const code of ['COUNTRY','CONTACT','CAMPAIGN','OPPORTUNITY','RESPONSIBILITY','CUSTOMER_TEMPLATE','CONTRACT','BANK_ACCOUNT','GEN_BUS','VAT_BUS','CUSTOMER_POSTING','DIMENSION_1','DIMENSION_2','SHIPMENT_METHOD','SHIPPING_AGENT','PAYMENT_TERMS']) {
           const option=erpElement('option',code);option.value=code;input.append(option);
         }
-      } else if (relation || field.type === 'boolean' || field.name === 'role' || field.name === 'item_category' || field.name === 'item_type' || field.name === 'document_type' || (['sales_orders', 'production_orders', 'sales_returns'].includes(table) && field.name === 'status')) {
+      } else if (relation || field.type === 'boolean' || field.name === 'role' || field.name === 'item_category' || field.name === 'item_type' || field.name === 'replenishment_system' || field.name === 'document_type' || (['sales_orders', 'production_orders', 'sales_returns'].includes(table) && field.name === 'status')) {
         input = erpElement('select', null);
         const options = relation ? [] : field.name === 'item_category' ? [['INVENTORY', 'Inventory'], ['SERVICE', 'Service'], ['NON_INVENTORY', 'Non-Inventory']]
           : field.name === 'document_type' ? (table === 'purchase_headers'
             ? [['ORDER', 'Đơn mua hàng'], ['QUOTE', 'Báo giá mua'], ['INVOICE', 'Hóa đơn mua'], ['RETURN_ORDER', 'Đơn trả hàng mua']]
             : [['QUOTE', 'Báo giá'], ['ORDER', 'Đơn bán']])
+          : field.name === 'replenishment_system' ? [['NONE', 'Không lập kế hoạch'], ['PURCHASE', 'Purchase'], ['PRODUCTION', 'Production']]
           : field.name === 'item_type' ? [['DEFAULT', 'Mặc định'], ['MANUFACTURED', 'Sản xuất'], ['PRODUCTION_COMPONENT', 'Linh kiện sản xuất']]
           : table === 'sales_returns' && field.name === 'status' ? (row ? [['DRAFT', 'Nháp'], ['RECEIVED', 'Đã nhận hàng — cộng tồn kho'], ['CANCELLED', 'Hủy']] : [['DRAFT', 'Nháp']])
           : table === 'production_orders' && field.name === 'status' ? (row ? [['DRAFT', 'Nháp'], ['COMPLETED', 'Hoàn tất — cập nhật tồn kho'], ['CANCELLED', 'Hủy']] : [['DRAFT', 'Nháp']])

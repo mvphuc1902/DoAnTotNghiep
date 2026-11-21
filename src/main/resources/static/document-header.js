@@ -5,12 +5,11 @@ function registerDocumentReport(tables, adapter) {
   tables.forEach(table => documentReportAdapters.set(table, adapter));
 }
 function mountDocumentHeader(host, context) {
-  if (!host || !documentReportAdapters.has(context.table)) return;
+  if (!host) return;
   host.querySelector('[data-document-report]')?.remove();
   const actions = erpElement('span'); actions.dataset.documentReport = 'true';
   const report = erpButton('Report', async event => {
-    const adapter = documentReportAdapters.get(context.table);
-    await adapter(context.table, context.row, event.currentTarget);
+    openReportOptions(context);
   });
   report.disabled = !context.row?.id;
   report.title = context.row?.id ? 'In / lưu PDF từ dữ liệu đã lưu của chứng từ' : 'Lưu chứng từ trước khi xuất Report';

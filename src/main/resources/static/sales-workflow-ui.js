@@ -9,7 +9,8 @@ async function salesShippingActions(detail,table,row) {
     const bar=erpElement('div',null,'profile-actions'),error=erpElement('p','','text-rose-600');error.setAttribute('role','alert');area.append(bar,error);
     area.append(erpElement('p',state.released?'Đã Release · Xuất kho khi Post Shipment.':'Chưa Release · Đơn hàng chưa làm thay đổi tồn kho.','document-hint'));
     async function post(action,body){const r=await fetch(erpApi+'/sales-shipping/'+id+'/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.message||'Không thực hiện được thao tác. Kiểm tra trạng thái, số lượng và tồn kho.');return data;}
-    function action(label,fn){bar.append(erpButton(label,async event=>{event.currentTarget.disabled=true;try{await fn();}catch(e){error.textContent=e.message;}finally{event.currentTarget.disabled=false;}}));}
+    function action(label,fn){bar.append(erpButton(label,async event=>{const button=event.currentTarget;button.disabled=true;try{await fn();}catch(e){error.textContent=e.message;}finally{button.disabled=false;}}));}
+    action('Order Planning',openOrderPlanning);
     if(!state.released)action('Release',async()=>{await post('release');area.remove();await salesShippingActions(detail,table,row);});
     else action('Post Shipment',()=>purchaseWorkflowForm('Giao hàng · Nhập số lượng thực xuất',[['postingDate','Ngày giao hàng',purchaseToday(),'date'],...state.lines.filter(l=>Number(l.quantity)>Number(l.quantity_shipped)).map(l=>['line_'+l.id,`${l.item_no} · còn ${Number(l.quantity)-Number(l.quantity_shipped)}`,0,'number'])],async(values,requestKey)=>{
       const lines=state.lines.filter(l=>Number(values['line_'+l.id])>0).map(l=>({lineId:l.id,quantity:values['line_'+l.id]}));

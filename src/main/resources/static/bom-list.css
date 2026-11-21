@@ -1,0 +1,11 @@
+.bom-list-table { width:100%; border-collapse:collapse; background:#f5f6f7; color:#172c3c; }
+.bom-list-table thead { background:#f5f6f7; }
+.bom-list-table th { text-transform:none; font-weight:400; letter-spacing:normal; color:#41637a; padding:12px 10px; }
+.bom-list-table td { padding:10px; border-bottom:1px solid #d1d6da; }
+.bom-list-table th:nth-child(2) { width:30%; }
+.bom-list-table th:nth-child(3) { width:35%; }
+.bom-list-table th:nth-child(4) { width:15%; }
+.bom-list-table th:nth-child(5) { width:20%; }
+.bom-list-table tbody tr:hover, .bom-list-table tbody tr:focus, .bom-list-table tbody tr:focus-within { background:#b2e7eb; outline:none; }
+.bom-list-table .bom-number-link { color:#007e8b; background:none; border:0; padding:0; font:inherit; cursor:pointer; }
+.bom-list-table .bom-number-link:hover, .bom-list-table .bom-number-link:focus { text-decoration:underline; }

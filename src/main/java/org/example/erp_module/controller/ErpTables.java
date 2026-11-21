@@ -19,7 +19,7 @@ final class ErpTables {
         Map.entry("general_ledger", List.of("id", "document_no", "document_type", "posting_date", "account_id", "description", "debit", "credit", "created_at")),
         Map.entry("inventory", List.of("id", "item_id", "product_id", "location_id", "quantity", "reserved_quantity", "available_quantity", "average_cost", "created_at", "updated_at")),
         Map.entry("inventory_ledger", List.of("id", "entry_no", "item_id", "product_id", "location_id", "document_type", "document_id", "posting_date", "quantity_in", "quantity_out", "unit_cost", "balance_quantity", "description", "created_at")),
-        Map.entry("items", List.of("id", "item_no", "description", "item_category", "item_type", "quantity", "base_unit_of_measure", "unit_price", "unit_cost", "inventory_posting_group", "gen_prod_posting_group", "vat_prod_posting_group", "blocked", "created_at", "updated_at")),
+        Map.entry("items", List.of("id", "item_no", "description", "item_category", "item_type", "replenishment_system", "preferred_vendor_id", "quantity", "base_unit_of_measure", "unit_price", "unit_cost", "inventory_posting_group", "gen_prod_posting_group", "vat_prod_posting_group", "blocked", "created_at", "updated_at")),
         Map.entry("item_bom", List.of("id", "parent_item_id", "component_item_id", "quantity")),
         Map.entry("production_orders", List.of("id", "production_no", "bom_parent_item_id", "location_id", "quantity", "status", "notes", "completed_at", "created_at", "updated_at")),
         Map.entry("production_components", List.of("id", "production_order_id", "component_item_id", "quantity_per_unit", "consumed_quantity")),

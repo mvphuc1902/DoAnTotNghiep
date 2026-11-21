@@ -1,7 +1,7 @@
 const erpApi = isLocalPreview ? 'http://localhost:8081/api/erp' : '/api/erp';
 const erpGroups = {
   items: ['Items & Inventory', ['items', 'inventory', 'inventory_ledger']],
-  production: ['Production', ['item_bom', 'production_orders', 'production_components']],
+  production: ['Production', ['item_bom', 'production_orders']],
   salesorders: ['Sales', ['sales_document_lines', 'sales_headers', 'sales_shipments', 'sales_shipment_lines', 'sales_invoices', 'sales_invoice_lines', 'sales_returns', 'sales_return_lines']],
   categories: ['Đơn vị tính & Thuế', ['units_of_measure', 'tax_codes']],
   locations: ['Locations', ['locations']],
@@ -34,10 +34,11 @@ const salesDocumentTitles = {
   INVOICE: 'Sales Invoice',
   RETURN_ORDER: 'Sales Return Order'
 };
-const hiddenSalesStorageTables = new Set(['sales_orders', 'sales_order_lines', 'sales_lines']);
+const hiddenSalesStorageTables = new Set(['sales_orders', 'sales_order_lines', 'sales_lines', 'production_components']);
 const salesLineTables = new Set(['sales_document_lines', 'sales_quote_lines', 'sales_order_lines', 'sales_invoice_lines', 'sales_return_lines']);
 const hiddenSalesLineMetadata = new Set(['source_table', 'source_line_id']);
 const columnLabels = {
+  replenishment_system: 'Replenishment System', preferred_vendor_id: 'Vendor mua hàng',
   quote_no: 'No.', document_type: 'Loại chứng từ', document_no: 'Document No.', sales_return_id: 'Sales Return Order', sales_invoice_id: 'Sales Invoice',
   return_no: 'Mã phiếu trả', return_id: 'Phiếu trả hàng', return_date: 'Ngày trả hàng', received_at: 'Ngày nhận hàng trả', sales_order_line_id: 'Dòng đơn bán gốc',
   item_code: 'Mã vật tư', item_name: 'Tên vật tư', location_name: 'Tên kho', average_cost: 'Giá vốn bình quân',
@@ -115,6 +116,7 @@ function renderErpNavigation(catalog) {
   const all = erpButton('All Data', () => openErpGroup('database'), classes);
   all.id = 'nav-database';
   nav.replaceChildren(...(canViewDashboard() ? [dashboard, all] : [all]));
+  const planningNav = erpButton('Order Planning', openOrderPlanning, classes); planningNav.id = 'nav-order-planning'; nav.append(planningNav);
   const hr = erpElement('details', null, 'pt-1');
   hr.append(erpElement('summary', 'Human Resources', 'px-3 py-2 text-xs font-semibold text-slate-300 cursor-pointer rounded-lg hover:bg-slate-800'));
   [['leaves', 'Leave Requests'], ['tasks', 'Tasks'], ['payroll', 'Payroll'], ['posts', 'Recruitment & News & Announcements']].forEach(([key, label]) => {
@@ -229,7 +231,8 @@ function syncErpNavigation() {
   if (!document.getElementById('tab-hr').classList.contains('hidden')) return;
   const customersVisible = !document.getElementById('tab-customers').classList.contains('hidden');
   const dashboardVisible = !document.getElementById('tab-dashboard').classList.contains('hidden');
-  const selected = dashboardVisible ? 'nav-dashboard' : customersVisible || erpState.table === 'customers'
+  const planningVisible = erpState.view === 'order-planning' && !document.getElementById('tab-data').classList.contains('hidden');
+  const selected = planningVisible ? 'nav-order-planning' : dashboardVisible ? 'nav-dashboard' : customersVisible || erpState.table === 'customers'
     ? 'nav-customers' : erpState.table === 'sales_headers' && (erpState.filterColumn === 'document_type' || erpState.documentType)
       ? 'nav-salesdoc-' + String(erpState.documentType || erpState.filterValue).toLowerCase()
       : erpState.table === 'sales_document_lines' ? 'nav-sales-lines'
@@ -339,6 +342,7 @@ async function openSalesDocuments(documentType) {
 }
 
 async function renderErpData() {
+  erpState.view = null;
   const version = ++erpRequestVersion;
   const state = {...erpState};
   const panel = document.getElementById('tab-data');
@@ -348,7 +352,32 @@ async function renderErpData() {
     const params = new URLSearchParams({page: state.page, size: state.size, search: state.search});
     if (state.filterColumn) { params.set('filterColumn', state.filterColumn); params.set('filterValue', state.filterValue); }
     if (state.documentType) params.set('documentType', state.documentType);
-    const data = await erpGet('/tables/' + encodeURIComponent(state.table) + '?' + params);
+    let data;
+    if (state.table === 'item_bom') {
+      // Group the complete line set before search and pagination so a BOM never splits across pages.
+      const grouped = new Map();
+      for (let page = 0; ; page++) {
+        const query = new URLSearchParams({page, size: 100});
+        if (state.filterColumn) { query.set('filterColumn', state.filterColumn); query.set('filterValue', state.filterValue); }
+        const result = await erpGet('/tables/item_bom?' + query);
+        if (version !== erpRequestVersion) return;
+        result.rows.forEach(line => {
+          const id = String(line.parent_item_id);
+          if (!grouped.has(id)) grouped.set(id, {id, parent_item_id: id});
+        });
+        if (result.rows.length < 100 || (page + 1) * 100 >= Number(result.total)) break;
+      }
+      const rows = await Promise.all([...grouped.values()].map(async row => {
+        const result = await erpGet('/tables/items?' + new URLSearchParams({size: 1, filterColumn: 'id', filterValue: row.parent_item_id}));
+        const item = result.rows[0];
+        return {...row, parent_item_no: item?.item_no || '—', parent_item_name: item?.description || '—', parent_unit: item?.base_unit_of_measure || '—', bom_status: '—'};
+      }));
+      const term = (state.search || '').trim().toLocaleLowerCase('vi-VN');
+      const filtered = rows.filter(row => (row.parent_item_no + ' ' + row.parent_item_name).toLocaleLowerCase('vi-VN').includes(term));
+      data = {columns: ['parent_item_no', 'parent_item_name', 'bom_status', 'parent_unit'], rows: filtered.slice(state.page * state.size, (state.page + 1) * state.size), total: filtered.length, page: state.page, size: state.size};
+    } else {
+      data = await erpGet('/tables/' + encodeURIComponent(state.table) + '?' + params);
+    }
     if (version !== erpRequestVersion) return;
     syncErpNavigation();
     panel.replaceChildren(erpElement('h2', tableLabels[state.table], 'text-xl font-bold'));
@@ -384,42 +413,6 @@ async function renderErpData() {
       finally { convertingQuote = false; }
     }, 'px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold disabled:opacity-50');
     makeOrder.disabled = true;
-    const purchaseSelected = new Map();
-    const purchaseChecks = [];
-    const purchaseSelectAll = erpElement('input'); purchaseSelectAll.type = 'checkbox';
-    purchaseSelectAll.setAttribute('aria-label', 'Chọn tất cả chứng từ nháp trên trang');
-    const deletePurchases = erpButton('Xóa đã chọn (0)', async event => {
-      if (!canDeleteRecords() || !purchaseSelected.size) return;
-      const chosen = [...purchaseSelected.values()];
-      if (!await confirmAction('Xóa ' + chosen.length + ' chứng từ mua đã chọn và các dòng hàng thuộc chứng từ?')) return;
-      event.currentTarget.disabled = true;
-      let deleted = 0, failure = '';
-      for (const document of chosen) {
-        try { await erpWrite('purchase_headers', document.id, 'DELETE'); deleted++; }
-        catch (error) { failure = document.document_no + ': ' + error.message; break; }
-      }
-      erpCatalog = null;
-      await renderErpData();
-      notifyCustomer('Đã xóa ' + deleted + '/' + chosen.length + ' chứng từ.' + (failure ? ' ' + failure : ''));
-    });
-    deletePurchases.disabled = true;
-    const syncPurchases = () => {
-      deletePurchases.textContent = 'Xóa đã chọn (' + purchaseSelected.size + ')';
-      deletePurchases.disabled = !canDeleteRecords() || !purchaseSelected.size;
-      const enabled = purchaseChecks.filter(entry => !entry.input.disabled);
-      purchaseSelectAll.disabled = !enabled.length;
-      purchaseSelectAll.checked = enabled.length > 0 && enabled.every(entry => entry.input.checked);
-      purchaseSelectAll.indeterminate = enabled.some(entry => entry.input.checked) && !purchaseSelectAll.checked;
-    };
-    purchaseSelectAll.onchange = () => {
-      purchaseChecks.forEach(({input, row}) => {
-        if (input.disabled) return;
-        input.checked = purchaseSelectAll.checked;
-        if (input.checked) purchaseSelected.set(String(row.id), row); else purchaseSelected.delete(String(row.id));
-      });
-      syncPurchases();
-    };
-    if (state.table === 'purchase_headers') toolbar.append(deletePurchases);
     const selectionHint = erpElement('span', 'Chọn báo giá nháp để tạo Sales Order.', 'text-sm text-slate-500');
     selectionHint.setAttribute('role', 'status');
     const salesType = state.filterColumn === 'document_type' ? state.filterValue : state.documentType;
@@ -468,7 +461,7 @@ async function renderErpData() {
       'Thêm ' + ({ORDER: 'Purchase Order', QUOTE: 'Purchase Quote', INVOICE: 'Purchase Invoice', RETURN_ORDER: 'Purchase Return Order'}[purchaseType] || 'Purchase Order'),
       () => openErpForm('purchase_headers', null, null, purchaseType || 'ORDER'),
       'px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm'));
-    const canAddGeneric = salesLineTables.has(state.table) ? false : state.table === 'sales_headers'
+    const canAddGeneric = erpIsLineTable(state.table) ? false : state.table === 'sales_headers'
       ? !salesType || ['ORDER', 'QUOTE'].includes(salesType)
       : !erpReadOnlyTables.has(state.table);
     if (canAddGeneric) toolbar.append(erpButton(state.table === 'items'
@@ -479,9 +472,12 @@ async function renderErpData() {
     panel.append(toolbar);
     const wrapper = erpElement('div', null, 'overflow-auto max-h-[60vh] bg-white border rounded-xl');
     const table = erpElement('table', null, 'min-w-full text-sm text-left whitespace-nowrap');
+    if (state.table === 'item_bom') table.classList.add('bom-list-table');
     const head = erpElement('thead', null, 'bg-slate-100 sticky top-0');
     const heading = erpElement('tr', null);
-    const leadingColumns = state.table==='sales_returns'
+    const leadingColumns = state.table === 'item_bom'
+      ? ['parent_item_no', 'parent_item_name', 'bom_status', 'parent_unit']
+      : state.table==='sales_returns'
       ? ['return_no', 'sales_order_id', 'location_id', 'return_date', 'status']
       : state.table === 'purchase_headers'
       ? ['document_no', 'document_type', 'vendor_name', 'order_date', 'status', 'total_amount']
@@ -510,20 +506,21 @@ async function renderErpData() {
       && !(state.table === 'sales_document_lines' && column === 'line_amount')
       && !(state.table === 'purchase_headers' && column === 'vendor_id')
       && !(state.table === 'sales_headers' && ['customer_id', 'location_id'].includes(column))
+      && !(state.table === 'item_bom' && ['id', 'parent_item_id', 'component_item_id'].includes(column))
       && !(state.table === 'inventory' && column === 'id')
       && !(state.table === 'inventory' && ['item_id', 'product_id', 'location_id'].includes(column))
       && !(state.table === 'locations' && ['id', 'location_id'].includes(column)));
     wrapper.tabIndex = 0;
     wrapper.setAttribute('role', 'region');
     wrapper.setAttribute('aria-label', 'Bảng ' + tableLabels[state.table] + ' — cuộn ngang để xem tất cả cột');
-    const showRowActions = !salesLineTables.has(state.table)
-      || ['purchase_lines', 'sales_lines', 'sales_order_lines', 'sales_document_lines'].includes(state.table);
-    if (showRowActions) heading.append(erpElement('th', 'Thao tác', 'px-4 py-3 sticky left-0 bg-slate-100 text-center'));
-    if (state.table === 'purchase_headers') heading.firstElementChild.prepend(purchaseSelectAll);
+    const showRowActions = true;
+    const appendListActions = mountErpListActions(toolbar,heading,state,data);
     visibleColumns.forEach(column => {
       const label = isSalesDocumentList ? salesDocumentColumnLabels[column]
         : state.table === 'sales_document_lines' ? salesLineColumnLabels[column] : null;
-      const productionOrderColumnLabel = state.table === 'production_orders'
+      const productionOrderColumnLabel = state.table === 'item_bom'
+        ? ({parent_item_no: 'No.', parent_item_name: 'Description', bom_status: 'Status', parent_unit: 'Unit of Measure Code', component_item_no: 'Mã linh kiện', component_item_name: 'Tên linh kiện', component_unit: 'Đơn vị', quantity: 'Số lượng / 1 sản phẩm'}[column])
+        : state.table === 'production_orders'
         ? ({item_id: 'Item to manufacture', bom_parent_item_id: 'Item to manufacture', quantity: 'Số lượng sản xuất'}[column])
         : null;
       const th = erpElement('th', label || productionOrderColumnLabel || columnLabels[column] || column, 'px-4 py-3'); th.title = column; heading.append(th);
@@ -535,6 +532,7 @@ async function renderErpData() {
       tr.tabIndex = 0;
       tr.setAttribute('aria-label', (state.table === 'sales_headers' ? 'Chọn chứng từ bán ' : 'Xem bản ghi ') + row.id);
       tr.onclick = () => {
+        if (state.table === 'item_bom') return openBomDocument(row);
         if (state.table !== 'sales_headers') return showErpDetail(state.table, row, data.columns);
         if (convertingQuote) return;
         selectedQuote = row;
@@ -548,63 +546,18 @@ async function renderErpData() {
           : `Đã chọn báo giá ${row.quote_no || row.id}`;
       };
       tr.onkeydown = event => { if (event.target === tr && ['Enter', ' '].includes(event.key)) { event.preventDefault(); tr.click(); } };
-      if (showRowActions) {
-      const actions = erpElement('td', null, 'px-3 py-2 sticky left-0 bg-white text-center align-middle');
-      if (state.table === 'purchase_headers') {
-        const choose = erpElement('input'); choose.type = 'checkbox';
-        choose.disabled = row.status !== 'DRAFT' || !canDeleteRecords();
-        choose.setAttribute('aria-label', 'Chọn chứng từ ' + row.document_no);
-        choose.onclick = event => event.stopPropagation();
-        choose.onchange = () => {
-          if (choose.checked) purchaseSelected.set(String(row.id), row); else purchaseSelected.delete(String(row.id));
-          syncPurchases();
-        };
-        purchaseChecks.push({input: choose, row});
-        const edit = erpButton('Sửa', event => { event.stopPropagation(); openErpForm('purchase_headers', row); });
-        edit.disabled = row.status !== 'DRAFT';
-        const remove = erpButton('Xóa', event => { event.stopPropagation(); deleteErpRow('purchase_headers', row, event.currentTarget); });
-        remove.disabled = row.status !== 'DRAFT' || !canDeleteRecords();
-        actions.append(choose, erpButton('Xem', event => {
-          event.stopPropagation();
-          showErpDetail('purchase_headers', row, data.columns);
-        }), edit, remove);
-        syncPurchases();
-      }
-      if (!erpReadOnlyTables.has(state.table) && !salesLineTables.has(state.table)) actions.append(erpButton('Sửa', event => { event.stopPropagation(); openErpForm(state.table, row); }),
-        erpButton('Xóa', event => { event.stopPropagation(); deleteErpRow(state.table, row, event.currentTarget); }));
-      if (state.table === 'purchase_lines') actions.append(erpButton('Xem', event => {
-        event.stopPropagation();
-        showErpDetail(state.table, row, data.columns);
-      }));
-      if (['sales_lines', 'sales_order_lines', 'sales_document_lines'].includes(state.table)) actions.append(erpButton('Xem', event => {
-        event.stopPropagation();
-        showErpDetail(state.table, row, data.columns);
-      }));
-      if (state.table === 'sales_headers') {
-        const sourceTable={QUOTE:'sales_headers',ORDER:'sales_orders',RETURN_ORDER:'sales_returns',INVOICE:'sales_invoices'}[row.document_type];
-        const sourceId=row.document_type==='QUOTE'?row.id:row[{ORDER:'sales_order_id',RETURN_ORDER:'sales_return_id',INVOICE:'sales_invoice_id'}[row.document_type]];
-        const action=async(event,deleting)=>{
-          event.stopPropagation();const button=event.currentTarget;button.disabled=true;
-          try{const source=await erpGet(`/tables/${sourceTable}?size=1&filterColumn=id&filterValue=${encodeURIComponent(sourceId)}`);if(!source.rows.length){
-              if(row.document_type==='INVOICE'&&deleting){
-                if(!await confirmAction(`Xóa Sales Invoice ${row.quote_no} bị mất chứng từ nguồn?`))return;
-                const response=await fetch(erpApi+`/sales-form/headers/${encodeURIComponent(row.id)}/orphaned-invoice`,{method:'DELETE',headers:{Accept:'application/json'},signal:AbortSignal.timeout(20000)});
-                if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.message||`Không xóa được Sales Invoice (HTTP ${response.status}).`);}
-                erpCatalog=null;await renderErpData();notifyCustomer(`Đã xóa Sales Invoice ${row.quote_no}.`);return;
-              }
-              throw new Error('Chứng từ gốc không còn tồn tại.');
-            }
-            if(deleting){button.disabled=false;await deleteErpRow(sourceTable,source.rows[0],button,()=>renderErpData());}
-            else await openErpForm(sourceTable,source.rows[0],()=>renderErpData());
-          }catch(error){notifyCustomer(error.message);}finally{button.disabled=false;}
-        };
-        if(sourceTable&&sourceId!=null){actions.append(erpButton('Sửa',event=>action(event,false)),erpButton('Xóa',event=>action(event,true)));}
-        quoteRows.push({row, tr});
-        actions.append(erpButton('View', event => { event.stopPropagation(); showErpDetail(state.table, row, data.columns); }));
-      }
-      tr.append(actions);
-      }
-      visibleColumns.forEach(column => { const value = erpValue(row[column],column), cell = erpElement('td', value, 'px-4 py-3 max-w-xs truncate'); cell.title = value; tr.append(cell); });
+      appendListActions(tr,row);
+      if (state.table === 'sales_headers') quoteRows.push({row,tr});
+      visibleColumns.forEach(column => {
+        const value = erpValue(row[column],column), cell = erpElement('td', value, 'px-4 py-3 max-w-xs truncate');
+        cell.title = value;
+        if (state.table === 'item_bom' && column === 'parent_item_no') {
+          const link = erpButton(value, event => { event.stopPropagation(); openBomDocument(row); }, 'bom-number-link');
+          cell.replaceChildren(link);
+        }
+        if (state.table === 'item_bom' && column === 'bom_status') cell.title = 'BOM chưa có quy trình chứng nhận trạng thái.';
+        tr.append(cell);
+      });
       body.append(tr);
     });
     if (!data.rows.length) {
@@ -815,7 +768,7 @@ function showErpDetail(table, row, columns) {
       finally { button.disabled = false; }
     }));
   }
-  if (!erpReadOnlyTables.has(table) && !(table === 'sales_returns' && row.status !== 'DRAFT')) actions.append(profileAction('Chỉnh sửa hồ sơ', () => { dialog.close(); openErpForm(table, row); }, 'primary'),
+  if (!erpIsLineTable(table) && !erpReadOnlyTables.has(table) && !(table === 'sales_returns' && row.status !== 'DRAFT')) actions.append(profileAction('Chỉnh sửa hồ sơ', () => { dialog.close(); openErpForm(table, row); }, 'primary'),
     profileAction('Xóa bản ghi', event => deleteErpRow(table, row, event.currentTarget), 'danger'));
   detail.append(related, actions);
   if (!isDocumentCard) dialog.showModal();

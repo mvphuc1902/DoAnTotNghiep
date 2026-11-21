@@ -98,6 +98,7 @@ function customerButton(label, icon, action) {
 function renderCustomers() {
   document.getElementById('customer-count').textContent = customers.length.toLocaleString('vi-VN');
   if (!customers.length) { customerTableMessage('Chưa có khách hàng. Bấm Thêm KH mới để đăng ký.'); return; }
+  const selectCustomer = customerListSelection();
   const rows = customers.map(customer => {
     const row = document.createElement('tr');
     row.className = 'cursor-pointer hover:bg-indigo-50 ' + (customer.id === selectedCustomerId ? 'bg-indigo-50' : '');
@@ -128,6 +129,7 @@ function renderCustomers() {
     actions.className = 'px-4 text-right whitespace-nowrap';
     actions.append(customerButton('Sửa khách hàng', 'fa-pen-to-square', () => openCustomerForm(customer)),
       customerButton('Xóa khách hàng', 'fa-trash', button => deleteCustomer(customer, button)));
+    selectCustomer(actions,customer);
     row.append(actions);
     return row;
   });
@@ -158,6 +160,7 @@ function showCustomerDetail() {
   const actions = profileElement('div', null, 'profile-actions');
   actions.append(profileAction('Chỉnh sửa hồ sơ', () => openCustomerForm(customer), 'primary'),
     profileAction('Xóa khách hàng', event => deleteCustomer(customer, event.currentTarget), 'danger'));
+  mountDocumentHeader(actions,{table:'customers',row:customer});
   panel.append(related, actions);
 }
 function openCustomerForm(customer = null) {
@@ -168,6 +171,7 @@ function openCustomerForm(customer = null) {
   document.getElementById('customer-form-title').textContent = customer ? 'Chỉnh sửa khách hàng' : 'Đăng ký khách hàng';
   document.getElementById('customer-form-error').textContent = '';
   enhanceDocumentForm(customerDialog); customerDialog.showModal();
+  mountDocumentHeader(customerForm.querySelector('.document-actions'),{table:'customers',row:customer});
   customerForm.elements.customerNo.focus();
 }
 
