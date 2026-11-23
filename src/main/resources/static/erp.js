@@ -1,17 +1,19 @@
 const erpApi = isLocalPreview ? 'http://localhost:8081/api/erp' : '/api/erp';
 const erpGroups = {
-  items: ['Items & Inventory', ['items', 'inventory', 'inventory_ledger']],
+  items: ['Items', ['items']],
   production: ['Production', ['item_bom', 'production_orders']],
   salesorders: ['Sales', ['sales_document_lines', 'sales_headers', 'sales_shipments', 'sales_shipment_lines', 'sales_invoices', 'sales_invoice_lines', 'sales_returns', 'sales_return_lines']],
   categories: ['Đơn vị tính & Thuế', ['units_of_measure', 'tax_codes']],
-  locations: ['Locations', ['locations']],
+  locations: ['Warehouse', ['locations', 'warehouse_zones', 'warehouse_bins', 'warehouse_bin_inventory', 'warehouse_entries', 'warehouse_operations', 'inventory', 'inventory_ledger', 'purchase_receipts', 'purchase_receipt_lines']],
   purchases: ['Purchasing', ['purchase_headers', 'purchase_lines', 'purchase_receipts', 'purchase_receipt_lines', 'purchase_returns']],
-  suppliers: ['Suppliers', ['vendors', 'supplier', 'supplier_ledger']],
+  suppliers: ['Vendors', ['vendors', 'purchase_vendor_entries']],
+  legacySuppliers: ['Suppliers · Dữ liệu cũ', ['supplier', 'supplier_ledger']],
   finance: ['Payments & Accounting', ['payments', 'payment_allocations', 'accounts', 'general_ledger', 'customer_ledger', 'tax_entries']],
   people: ['Employees & Users', ['employees', 'users']],
   database: ['All Data', []]
 };
 const tableLabels = {
+  warehouse_zones:'Warehouse Zones',warehouse_bins:'Warehouse Bins',warehouse_bin_inventory:'Bin Contents',warehouse_entries:'Warehouse Entries',warehouse_operations:'Warehouse Operations',
   sales_setup_codes: 'Sales Setup · Danh mục lookup',
   sales_headers: 'Sales',
   sales_document_lines: 'Sales Lines',
@@ -19,14 +21,14 @@ const tableLabels = {
   item_bom: 'Production BOMs', production_orders: 'Production Orders', production_components: 'Consumed Components',
   accounts: 'Chart of Accounts', customer_ledger: 'Customer Ledger',
   customers: 'Customers', employees: 'Employees', general_ledger: 'General Ledger', inventory: 'Inventory',
-  inventory_ledger: 'Inventory Ledger', items: 'Mặt hàng (Items)', locations: 'Locations', payment_allocations: 'Payment Allocations',
+  inventory_ledger: 'Inventory Ledger', items: 'Mặt hàng (Items)', locations: 'Warehouses / Locations', payment_allocations: 'Payment Allocations',
   payments: 'Payments', purchase_headers: 'Purchase Documents · Chứng từ mua',
   purchase_lines: 'Purchase Lines · Dòng chứng từ mua',
   purchase_receipt_lines: 'Purchase Receipt Lines', purchase_receipts: 'Purchase Receipts', purchase_returns: 'Purchase Returns',
   sales_invoice_lines: 'Sales Invoice Lines', sales_invoices: 'Sales Invoices', sales_lines: 'Sales Lines',
   sales_order_lines: 'Sales Order Lines', sales_quote_lines: 'Sales Quote Lines', sales_orders: 'Sales Orders', sales_shipment_lines: 'Sales Shipment Lines',
   sales_shipments: 'Sales Shipments', supplier: 'Suppliers', supplier_ledger: 'Supplier Ledger',
-  tax_codes: 'Tax Codes', tax_entries: 'Tax Entries', units_of_measure: 'Units of Measure', users: 'Users', vendors: 'Vendors'
+  tax_codes: 'Tax Codes', tax_entries: 'Tax Entries', units_of_measure: 'Units of Measure', users: 'Users', vendors: 'Vendors', purchase_vendor_entries: 'Vendor Ledger Entries'
 };
 const salesDocumentTitles = {
   QUOTE: 'Sales Quote',
@@ -38,6 +40,7 @@ const hiddenSalesStorageTables = new Set(['sales_orders', 'sales_order_lines', '
 const salesLineTables = new Set(['sales_document_lines', 'sales_quote_lines', 'sales_order_lines', 'sales_invoice_lines', 'sales_return_lines']);
 const hiddenSalesLineMetadata = new Set(['source_table', 'source_line_id']);
 const columnLabels = {
+  bin_code:'Bin',zone_code:'Zone',bin_type:'Loại Bin',capacity:'Sức chứa',source_bin_code:'Từ Bin',destination_bin_code:'Đến Bin',source_location_code:'Từ kho',destination_location_code:'Đến kho',entry_type:'Loại phát sinh',operation_type:'Nghiệp vụ',expected_quantity:'Số hệ thống',counted_quantity:'Số kiểm đếm',approved_by:'Người phê duyệt',
   replenishment_system: 'Replenishment System', preferred_vendor_id: 'Vendor mua hàng',
   quote_no: 'No.', document_type: 'Loại chứng từ', document_no: 'Document No.', sales_return_id: 'Sales Return Order', sales_invoice_id: 'Sales Invoice',
   return_no: 'Mã phiếu trả', return_id: 'Phiếu trả hàng', return_date: 'Ngày trả hàng', received_at: 'Ngày nhận hàng trả', sales_order_line_id: 'Dòng đơn bán gốc',
@@ -81,7 +84,7 @@ Object.assign(columnLabels, {
   discount_percent: 'Giảm giá (%)', location_code: 'Mã kho'
 });
 let erpCatalog = null;
-const erpReadOnlyTables = new Set(['sales_shipments','sales_shipment_lines','purchase_receipts', 'purchase_receipt_lines', 'inventory_ledger', 'production_components', 'sales_lines', 'sales_orders', 'sales_headers', 'sales_document_lines', 'purchase_headers', 'purchase_lines']);
+const erpReadOnlyTables = new Set(['warehouse_zones','warehouse_bins','warehouse_bin_inventory','warehouse_entries','warehouse_operations','purchase_vendor_entries','sales_shipments','sales_shipment_lines','purchase_receipts', 'purchase_receipt_lines', 'inventory_ledger', 'production_components', 'sales_lines', 'sales_orders', 'sales_headers', 'sales_document_lines', 'purchase_headers', 'purchase_lines']);
 let erpCatalogPromise = null;
 let erpState = {group: 'database', table: 'customers', page: 0, size: 25, search: '', filterColumn: null, filterValue: null, documentType: null};
 let erpRequestVersion = 0;
@@ -475,7 +478,9 @@ async function renderErpData() {
     if (state.table === 'item_bom') table.classList.add('bom-list-table');
     const head = erpElement('thead', null, 'bg-slate-100 sticky top-0');
     const heading = erpElement('tr', null);
-    const leadingColumns = state.table === 'item_bom'
+    const leadingColumns = state.table === 'purchase_vendor_entries'
+      ? ['document_no','posting_date','vendor_no','vendor_name','invoice_no','entry_type','currency_code','amount','reference']
+      : state.table === 'item_bom'
       ? ['parent_item_no', 'parent_item_name', 'bom_status', 'parent_unit']
       : state.table==='sales_returns'
       ? ['return_no', 'sales_order_id', 'location_id', 'return_date', 'status']
@@ -504,6 +509,8 @@ async function renderErpData() {
       : [...new Set([...leadingColumns, ...data.columns])].filter(column => data.columns.includes(column)
       && !hiddenSalesLineMetadata.has(column)
       && !(state.table === 'sales_document_lines' && column === 'line_amount')
+      && !(state.table.startsWith('warehouse_') && (column==='id' || column.endsWith('_id')))
+      && !(state.table === 'purchase_vendor_entries' && ['id','vendor_id','invoice_id','return_order_id'].includes(column))
       && !(state.table === 'purchase_headers' && column === 'vendor_id')
       && !(state.table === 'sales_headers' && ['customer_id', 'location_id'].includes(column))
       && !(state.table === 'item_bom' && ['id', 'parent_item_id', 'component_item_id'].includes(column))
@@ -694,8 +701,11 @@ function showErpDetail(table, row, columns) {
   const header = profileHeader(tableLabels[table] + ' · Hồ sơ chi tiết', name, code, status, row.blocked === true || row.active === false || (row.status && !['OPEN', 'POSTED', 'INVOICED'].includes(row.status)));
   header.querySelector('h2').id = 'erp-detail-title';
   detail.replaceChildren(closeBar, header);
+  decoratePeopleCard(header,table,row);
   mountDocumentHeader(closeBar, {table, row});
-  if(isSalesDocument) salesShippingActions(detail,table,row);
+  showWarehouseVendorSummary(detail,table,row);
+  if(table==='locations')mountWarehouseActions(detail,row);
+  if(isSalesDocument) { salesShippingActions(detail,table,row); salesAccountingActions(detail,table,row); }
   if (table === 'purchase_headers') showPurchaseWorkflow(detail, row);
   if (table === 'sales_headers') {
     if (row.document_type === 'QUOTE') {
@@ -738,6 +748,11 @@ function showErpDetail(table, row, columns) {
       `${tableLabels[relation.source_table]} (${relation.source_column})`,
       () => openErpTable(relation.source_table, relation.source_column, row[relation.target_column])));
   });
+  if(table==='warehouse_operations') {
+    links.append(erpButton('Warehouse Entries · '+row.document_no,()=>openErpTable('warehouse_entries','operation_id',row.id)),erpButton('G/L · '+row.document_no,()=>openErpTable('general_ledger','document_no',row.document_no)));
+  }
+  if(table==='inventory_ledger'&&['WH_COUNT','WH_TRANSFER'].includes(row.document_type)&&row.document_id)links.append(erpButton('Chứng từ kho nguồn',()=>openErpTable('warehouse_operations','id',row.document_id)));
+  if(table==='general_ledger'&&row.document_type==='WH_COUNT')links.append(erpButton('Phiếu kiểm kê nguồn · '+row.document_no,()=>openErpTable('warehouse_operations','document_no',row.document_no)));
   if (!links.children.length) links.append(erpElement('p', 'Chưa có liên kết dữ liệu được khai báo.', 'text-sm text-slate-500'));
   related.append(links);
   const actions = profileElement('div', null, 'profile-actions');

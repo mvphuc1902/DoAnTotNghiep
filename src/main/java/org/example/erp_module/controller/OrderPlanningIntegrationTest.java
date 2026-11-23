@@ -15,7 +15,7 @@ class OrderPlanningIntegrationTest {
  @Test void shortageCreatesOnePurchaseOrderAndReceiptDoesNotDoubleCountSupply(){
   var ds=new DriverManagerDataSource(System.getenv("PURCHASE_TEST_DB_URL"),System.getenv("PURCHASE_TEST_DB_USER"),System.getenv("PURCHASE_TEST_DB_PASSWORD"));
   var db=new JdbcTemplate(ds);var tx=new TransactionTemplate(new DataSourceTransactionManager(ds));
-  tx.execute(status->{status.setRollbackOnly();
+  tx.execute(status->{status.setRollbackOnly(); WarehouseTestSupport.ensureSchema(db);
    try { db.execute(Files.readString(Path.of("src/main/resources/order-planning-v1.sql"))); }catch(Exception e){throw new RuntimeException(e);}
    String suffix=UUID.randomUUID().toString().substring(0,8);
    long vendor=db.queryForObject("INSERT INTO vendors(vendor_no,name) VALUES(?,?) RETURNING id",Long.class,"PLAN-"+suffix,"Planning test vendor");

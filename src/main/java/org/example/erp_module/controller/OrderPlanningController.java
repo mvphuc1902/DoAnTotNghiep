@@ -58,7 +58,7 @@ public class OrderPlanningController {
     i.preferred_vendor_id::text AS vendor_id,v.name AS vendor_name,v.blocked AS vendor_blocked,
     loc.code AS location_code,loc.name AS location_name,
     coalesce(s.on_hand,0) AS on_hand,coalesce(s.reserved,0) AS reserved,
-    coalesce(s.available,0) AS available,coalesce(p.incoming,0) AS incoming
+    greatest(coalesce(s.available,0)-warehouse_unavailable_quantity(d.item_id,d.location_id),0) AS available,coalesce(p.incoming,0) AS incoming
    FROM demand d JOIN items i ON i.id=d.item_id JOIN locations loc ON loc.id=d.location_id
    LEFT JOIN vendors v ON v.id=i.preferred_vendor_id
    LEFT JOIN stock s ON s.item_id=d.item_id AND s.location_id=d.location_id

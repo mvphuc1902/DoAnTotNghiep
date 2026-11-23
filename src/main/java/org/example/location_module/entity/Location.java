@@ -20,7 +20,4 @@ public class Location {
     private String name;
 
     private String address;
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "location_id")
-    private Location location;
 }

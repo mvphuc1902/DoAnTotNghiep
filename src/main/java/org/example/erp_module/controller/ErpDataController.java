@@ -58,8 +58,8 @@ public class ErpDataController {
                            PARTITION BY item.id
                            ORDER BY production.created_at DESC NULLS LAST, production.id DESC
                        ) AS order_rank
-                FROM public.production_orders production
-                JOIN public.items item ON item.id = production.bom_parent_item_id
+                FROM public.items item
+                LEFT JOIN public.production_orders production ON item.id = production.bom_parent_item_id
                 WHERE item.item_type = 'MANUFACTURED'
                   AND item.item_category = 'INVENTORY'
                   AND NOT coalesce(item.blocked, false)
@@ -174,6 +174,14 @@ public class ErpDataController {
             columns.remove("product_id");
             columns.addAll(List.of("item_code", "item_name", "location_name", "unit"));
         }
+        if(table.equals("warehouse_zones")){columns=new ArrayList<>(columns);columns.addAll(List.of("location_code"));}
+        if(table.equals("warehouse_bins")){columns=new ArrayList<>(columns);columns.addAll(List.of("location_code","zone_code"));}
+        if(table.equals("warehouse_bin_inventory")){columns=new ArrayList<>(columns);columns.addAll(List.of("location_code","bin_code","item_no","description","base_unit_of_measure"));}
+        if(table.equals("warehouse_entries")){columns=new ArrayList<>(columns);columns.addAll(List.of("location_code","bin_code","item_no","description","base_unit_of_measure","document_no"));}
+        if(table.equals("warehouse_operations")){columns=new ArrayList<>(columns);columns.addAll(List.of("item_no","description","source_bin_code","source_location_code","destination_bin_code","destination_location_code"));}
+        if (table.equals("purchase_vendor_entries")) {
+            columns = new ArrayList<>(columns); columns.addAll(List.of("vendor_no", "vendor_name", "invoice_no"));
+        }
         if (table.equals("purchase_headers")) {
             columns = new ArrayList<>(columns);
             columns.addAll(List.of("vendor_name", "vendor_no"));
@@ -230,6 +238,13 @@ public class ErpDataController {
             where += " AND \"status\" <> 'CONVERTED'";
         }
         String from = " FROM public." + quote(table);
+        if(table.equals("warehouse_zones")) from=" FROM (SELECT z.*,l.code AS location_code FROM warehouse_zones z JOIN locations l ON l.id=z.location_id) warehouse_view";
+        if(table.equals("warehouse_bins")) from=" FROM (SELECT b.*,l.code AS location_code,z.code AS zone_code FROM warehouse_bins b JOIN locations l ON l.id=b.location_id JOIN warehouse_zones z ON z.id=b.zone_id) warehouse_view";
+        if(table.equals("warehouse_bin_inventory")) from=" FROM (SELECT s.*,l.code AS location_code,b.code AS bin_code,i.item_no,i.description,i.base_unit_of_measure FROM warehouse_bin_inventory s JOIN locations l ON l.id=s.location_id JOIN warehouse_bins b ON b.id=s.bin_id JOIN items i ON i.id=s.item_id) warehouse_view";
+        if(table.equals("warehouse_entries")) from=" FROM (SELECT e.*,l.code AS location_code,b.code AS bin_code,i.item_no,i.description,i.base_unit_of_measure,o.document_no FROM warehouse_entries e JOIN locations l ON l.id=e.location_id JOIN warehouse_bins b ON b.id=e.bin_id JOIN items i ON i.id=e.item_id LEFT JOIN warehouse_operations o ON o.id=e.operation_id) warehouse_view";
+        if(table.equals("warehouse_operations")) from=" FROM (SELECT o.*,i.item_no,i.description,bs.code AS source_bin_code,ls.code AS source_location_code,bd.code AS destination_bin_code,ld.code AS destination_location_code FROM warehouse_operations o JOIN items i ON i.id=o.item_id JOIN warehouse_bins bs ON bs.id=o.source_bin_id JOIN locations ls ON ls.id=bs.location_id LEFT JOIN warehouse_bins bd ON bd.id=o.destination_bin_id LEFT JOIN locations ld ON ld.id=bd.location_id) warehouse_view";
+
+        if (table.equals("purchase_vendor_entries")) from = " FROM (SELECT e.*,v.vendor_no,v.name AS vendor_name,h.document_no AS invoice_no FROM purchase_vendor_entries e JOIN vendors v ON v.id=e.vendor_id JOIN purchase_headers h ON h.id=e.invoice_id) vendor_ledger_view";
         if (table.equals("purchase_headers")) {
             from = " FROM (SELECT header.*, vendor.name AS vendor_name, vendor.vendor_no AS vendor_no"
                 + " FROM public.purchase_headers header JOIN public.vendors vendor ON vendor.id=header.vendor_id)"
@@ -257,7 +272,7 @@ public class ErpDataController {
                 + " LEFT JOIN public.locations location ON location.id=header.location_id) sales_headers";
         }
         if (table.equals("inventory") || table.equals("inventory_ledger")) {
-            from = " FROM (SELECT stock.*, COALESCE(item.item_no,legacy.code) AS item_code, "
+            from = " FROM (SELECT " + (table.equals("inventory") ? "stock.id,stock.item_id,stock.product_id,stock.location_id,stock.quantity,stock.reserved_quantity,stock.average_cost,stock.created_at,stock.updated_at,greatest(stock.quantity-stock.reserved_quantity-warehouse_unavailable_quantity(stock.item_id,stock.location_id),0) AS available_quantity" : "stock.*") + ", COALESCE(item.item_no,legacy.code) AS item_code, "
                 + "COALESCE(NULLIF(item.description,''),item.item_no,legacy.name,legacy.code) AS item_name, "
                 + "location.name AS location_name, COALESCE(item.base_unit_of_measure,legacy.unit) AS unit "
                 + "FROM public." + quote(table) + " stock LEFT JOIN items item ON item.id=stock.item_id "

@@ -25,6 +25,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/login.html","/login.js","/auth.js","/api/auth/csrf","/api/auth/login","/error","/favicon.ico").permitAll()
                 .requestMatchers("/api/auth/me","/api/auth/logout").authenticated()
+                .requestMatchers("/api/people", "/api/people/**").authenticated()
                 .requestMatchers(request -> {
                     var account=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
                     String path=request.getRequestURI().substring(request.getContextPath().length());

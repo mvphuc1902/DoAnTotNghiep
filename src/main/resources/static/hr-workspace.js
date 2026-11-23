@@ -27,7 +27,7 @@ function openHrEmployees() {
           });remove.classList.add('hr-employee-delete');
           actions.append(profileAction('Sửa nhân viên',()=>hrEmployeeForm(r),'primary'),remove);card.append(actions);
         }
-        list.append(card);
+        decoratePeopleCard(card,'employees',r);list.append(card);
       });if(!matches.length)list.append(hrNode('p','No employees found.','hr-empty'));
     }search.oninput=fill;fill();
   });
@@ -42,6 +42,7 @@ function hrEmployeeForm(row=null) {
     input.name=key;input.required=['employeeCode','name','active'].includes(key);if(max)input.maxLength=max;input.value=values[key]??'';
     wrapper.append(hrNode('span',label+(input.required?' *':'')),input);grid.append(wrapper);controls[key]=input;
   });
+  mountAccountAvatarEditor(form,row?.user_id,grid,!!row?.user_id);
   const error=hrNode('p','','hr-error');error.setAttribute('role','alert');const actions=hrNode('div',null,'hr-actions'),save=profileAction('Lưu nhân viên',()=>{},'primary');save.type='submit';
   let saving=false;dialog.addEventListener('cancel',e=>{if(saving)e.preventDefault();});
   actions.append(profileAction('Hủy',()=>dialog.close()),save);form.append(hrNode('h2',title),grid,error,actions);dialog.append(form);
@@ -49,7 +50,7 @@ function hrEmployeeForm(row=null) {
     e.preventDefault();if(saving)return;
     const payload=Object.fromEntries(Object.entries(controls).map(([key,input])=>[key,key==='active'?input.value==='true':input.value.trim()||null]));
     saving=true;error.textContent='';form.querySelectorAll('input,select,button').forEach(control=>control.disabled=true);
-    try{await hrApi('employees'+(row?'/'+row.id:''),row?'PUT':'POST',payload);dialog.close();await openHrEmployees();}
+    try{await hrApi('employees'+(row?'/'+row.id:''),row?'PUT':'POST',payload);const warning=await saveAccountAvatar(form,row?.user_id);dialog.close();if(warning)notifyCustomer(warning);await openHrEmployees();}
     catch(failure){error.textContent=failure.message;}
     finally{saving=false;form.querySelectorAll('input,select,button').forEach(control=>control.disabled=false);}
   };enhanceDocumentForm(dialog);dialog.showModal();

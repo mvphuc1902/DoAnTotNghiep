@@ -338,6 +338,7 @@ async function exportSalesReport(table, row, button) {
         <footer class="footer"><span>${escape(documentKind)} · ${escape(documentNo)}</span><span>Được tạo từ ERP Enterprise</span></footer>
       </main></body></html>`);
     reportWindow.document.close();
+    mountReportDownloads(reportWindow,{name:documentKind+' '+documentNo});
     reportWindow.focus();
   } catch (error) {
     reportWindow.document.body.textContent = `Không thể tạo báo cáo: ${error.message}`;

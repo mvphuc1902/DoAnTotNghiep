@@ -23,7 +23,7 @@ final class ErpTables {
         Map.entry("item_bom", List.of("id", "parent_item_id", "component_item_id", "quantity")),
         Map.entry("production_orders", List.of("id", "production_no", "bom_parent_item_id", "location_id", "quantity", "status", "notes", "completed_at", "created_at", "updated_at")),
         Map.entry("production_components", List.of("id", "production_order_id", "component_item_id", "quantity_per_unit", "consumed_quantity")),
-        Map.entry("locations", List.of("id", "code", "name", "address", "created_at", "location_id")),
+        Map.entry("locations", List.of("id", "code", "name", "address", "created_at")),
         Map.entry("payment_allocations", List.of("id", "payment_id", "sales_invoice_id", "purchase_invoice_id", "allocated_amount", "created_at")),
         Map.entry("payments", List.of("id", "payment_no", "payment_type", "customer_id", "supplier_id", "payment_date", "amount", "payment_method", "account_id", "description", "status", "created_at")),
         Map.entry("purchase_headers", List.of("id", "document_type", "document_no", "vendor_id", "order_date", "posting_date", "requested_receipt_date", "promised_receipt_date", "vendor_reference", "external_document_no", "currency_code", "payment_terms_code", "shipment_method_code", "salesperson_code", "location_code", "status", "discount_percent", "discount_amount", "vat_amount", "total_amount", "notes", "created_at", "updated_at")),
@@ -44,6 +44,12 @@ final class ErpTables {
         Map.entry("tax_entries", List.of("id", "document_no", "document_type", "tax_date", "tax_code_id", "taxable_amount", "tax_amount", "direction", "description", "created_at")),
         Map.entry("units_of_measure", List.of("id", "code", "name", "description", "active", "created_at")),
         Map.entry("users", List.of("id", "username", "email", "name", "phone", "department", "team", "role", "dashboard_access")),
+        Map.entry("purchase_vendor_entries", List.of("id", "invoice_id", "vendor_id", "entry_type", "document_no", "posting_date", "currency_code", "amount", "reference", "vat_amount", "return_order_id", "created_at")),
+        Map.entry("warehouse_zones", List.of("id", "location_id", "code", "name")),
+        Map.entry("warehouse_bins", List.of("id", "location_id", "zone_id", "code", "bin_type", "capacity", "blocked")),
+        Map.entry("warehouse_bin_inventory", List.of("id", "location_id", "bin_id", "item_id", "quantity")),
+        Map.entry("warehouse_entries", List.of("id", "location_id", "bin_id", "item_id", "quantity", "entry_type", "operation_id", "inventory_entry_id", "created_at")),
+        Map.entry("warehouse_operations", List.of("id", "document_no", "operation_type", "item_id", "source_bin_id", "destination_bin_id", "quantity", "status", "expected_quantity", "counted_quantity", "reason", "created_by", "approved_by", "created_at", "posted_at")),
         Map.entry("vendors", List.of("id", "vendor_no", "name", "address", "city", "phone", "email", "tax_no", "payment_terms_code", "currency_code", "blocked", "created_at"))
     );
 }

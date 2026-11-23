@@ -833,6 +833,8 @@ public class ErpWriteController {
     }
 
     private static void writableTable(String table) {
+        if (table.startsWith("warehouse_")) throw conflict("Dùng thao tác Warehouse trên card kho để tạo Zone/Bin và đăng ký nghiệp vụ; lịch sử kho chỉ đọc.");
+        if (table.equals("purchase_vendor_entries")) throw conflict("Công nợ Vendor chỉ phát sinh qua Post Invoice, thanh toán hoặc Credit Memo; không sửa/xóa trực tiếp.");
         if (Set.of("sales_shipments", "sales_shipment_lines").contains(table)) throw conflict("Giao hàng qua Post Shipment trên Sales Order; không sửa/xóa phiếu đã đăng.");
         if (Set.of("purchase_receipts", "purchase_receipt_lines").contains(table))
             throw conflict("Nhận hàng bằng Post Receive trên Purchase Order; phiếu đã đăng sổ không được sửa/xóa trực tiếp.");

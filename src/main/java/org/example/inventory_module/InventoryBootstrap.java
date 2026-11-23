@@ -50,7 +50,11 @@ public class InventoryBootstrap implements ApplicationRunner {
                 {"purchase-return-order-v2", "purchase-return-order-v2.sql"},
                 {"purchase-workflow-v3", "purchase-workflow-v3.sql"},
                 {"sales-shipping-v8", "sales-shipping-v8.sql"},
-                {"order-planning-v1", "order-planning-v1.sql"}}) {
+                {"order-planning-v1", "order-planning-v1.sql"},
+                {"warehouse-vendor-v1", "warehouse-vendor-v1.sql"},
+                {"warehouse-basic-v1", "warehouse-basic-v1.sql"},
+                {"erp-accounting-v1", "erp-accounting-v1.sql"},
+                {"people-profile-v1", "people-profile-v1.sql"}}) {
         if (Boolean.TRUE.equals(jdbc.queryForObject(
                 "SELECT EXISTS (SELECT 1 FROM erp_schema_versions WHERE version=? )", Boolean.class, migration[0]))) continue;
         try (var stream = new ClassPathResource(migration[1]).getInputStream()) {

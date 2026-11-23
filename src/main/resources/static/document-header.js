@@ -68,7 +68,7 @@ async function exportPurchaseReport(table, row, button) {
       ${saved.notes?`<aside class="note"><strong>Ghi chú</strong><br>${escape(saved.notes).replace(/\n/g,'<br>')}</aside>`:''}
       <footer class="footer"><span>${escape(title)} · ${escape(number)}</span><span>Được tạo từ ERP Enterprise</span></footer></main></body></html>`;
 
-    popup.document.open(); popup.document.write(html); popup.document.close(); popup.focus();
+    popup.document.open(); popup.document.write(html); popup.document.close(); mountReportDownloads(popup,{name:title+' '+number}); popup.focus();
   } catch (error) { popup.document.body.textContent = 'Không tạo được Report: ' + error.message; }
   finally { button.disabled = false; }
 }

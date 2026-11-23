@@ -16,7 +16,7 @@ class SalesShippingIntegrationTest {
   var ds=new DriverManagerDataSource(System.getenv("PURCHASE_TEST_DB_URL"),System.getenv("PURCHASE_TEST_DB_USER"),System.getenv("PURCHASE_TEST_DB_PASSWORD"));
   var manager=new DataSourceTransactionManager(ds);var db=new JdbcTemplate(ds);var tx=new TransactionTemplate(manager);
   var nested=new TransactionTemplate(manager);nested.setPropagationBehavior(TransactionDefinition.PROPAGATION_NESTED);
-  tx.execute(status->{status.setRollbackOnly();try{if(db.queryForObject("SELECT to_regclass('sales_shipments') IS NULL",Boolean.class))db.execute(Files.readString(Path.of("src/main/resources/sales-shipping-v8.sql")));}catch(Exception e){throw new RuntimeException(e);}
+  tx.execute(status->{status.setRollbackOnly(); WarehouseTestSupport.ensureSchema(db);try{if(db.queryForObject("SELECT to_regclass('sales_shipments') IS NULL",Boolean.class))db.execute(Files.readString(Path.of("src/main/resources/sales-shipping-v8.sql")));}catch(Exception e){throw new RuntimeException(e);}
    String suffix=UUID.randomUUID().toString().substring(0,8);
    long customer=db.queryForObject("INSERT INTO customers(customer_no,name,blocked) VALUES(?,?,false) RETURNING id",Long.class,"TEST-"+suffix,"Rollback customer");
    long location=db.queryForObject("SELECT id FROM locations ORDER BY id LIMIT 1",Long.class);

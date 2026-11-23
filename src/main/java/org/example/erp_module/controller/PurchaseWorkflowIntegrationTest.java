@@ -18,7 +18,7 @@ class PurchaseWorkflowIntegrationTest {
   var ds=new DriverManagerDataSource(System.getenv("PURCHASE_TEST_DB_URL"),System.getenv("PURCHASE_TEST_DB_USER"),System.getenv("PURCHASE_TEST_DB_PASSWORD"));
   var db=new JdbcTemplate(ds);
   new TransactionTemplate(new DataSourceTransactionManager(ds)).execute(status->{
-   status.setRollbackOnly();
+   status.setRollbackOnly(); WarehouseTestSupport.ensureSchema(db);
    try {
     if(db.queryForObject("SELECT to_regclass('purchase_vendor_entries') IS NULL",Boolean.class)) db.execute(Files.readString(Path.of("src/main/resources/purchase-workflow-v3.sql")));
    }catch(Exception e){throw new RuntimeException(e);}

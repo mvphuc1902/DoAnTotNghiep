@@ -12,7 +12,7 @@ class ProductionPlanningIntegrationTest {
  @Test void bomDemandUsesProductionQuantityAndNetsStockOnceAcrossOrders(){
   var ds=new DriverManagerDataSource(System.getenv("PURCHASE_TEST_DB_URL"),System.getenv("PURCHASE_TEST_DB_USER"),System.getenv("PURCHASE_TEST_DB_PASSWORD"));
   var db=new JdbcTemplate(ds);
-  new TransactionTemplate(new DataSourceTransactionManager(ds)).execute(status->{status.setRollbackOnly();
+  new TransactionTemplate(new DataSourceTransactionManager(ds)).execute(status->{status.setRollbackOnly(); WarehouseTestSupport.ensureSchema(db);
    String tag="TEST-"+UUID.randomUUID().toString().substring(0,8);
    long vendor=db.queryForObject("INSERT INTO vendors(vendor_no,name) VALUES(?,?) RETURNING id",Long.class,tag,tag);
    long location=db.queryForObject("SELECT id FROM locations ORDER BY id LIMIT 1",Long.class);

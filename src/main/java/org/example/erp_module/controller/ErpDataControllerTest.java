@@ -70,8 +70,8 @@ class ErpDataControllerTest {
         org.mockito.ArgumentCaptor<String> sql = org.mockito.ArgumentCaptor.forClass(String.class);
         org.mockito.ArgumentCaptor<Object[]> parameters = org.mockito.ArgumentCaptor.forClass(Object[].class);
         verify(jdbc).queryForList(sql.capture(), parameters.capture());
-        assertTrue(sql.getValue().contains("FROM public.production_orders production"));
-        assertTrue(sql.getValue().contains("JOIN public.items item ON item.id = production.bom_parent_item_id"));
+        assertTrue(sql.getValue().contains("FROM public.items item"));
+        assertTrue(sql.getValue().contains("LEFT JOIN public.production_orders production ON item.id = production.bom_parent_item_id"));
         assertTrue(sql.getValue().contains("item.item_type = 'MANUFACTURED'"));
         assertTrue(sql.getValue().contains("item.item_category = 'INVENTORY'"));
         assertTrue(sql.getValue().contains("row_number() OVER"));

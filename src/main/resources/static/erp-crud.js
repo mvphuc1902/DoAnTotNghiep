@@ -661,6 +661,8 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
       controls.get('base_unit_of_measure')?.addEventListener('input', refreshInventory);
       refreshInventory();
     }
+    if(table==='users')mountAccountAvatarEditor(form,row?.id,grid);
+    if(table==='employees')mountAccountAvatarEditor(form,row?.user_id,grid,!!row?.user_id);
     const error = erpElement('p', '', 'text-rose-600 text-sm'); error.id = 'erp-edit-error'; error.setAttribute('role', 'alert');
     const actions = erpElement('div', null, 'flex justify-end gap-3');
     const save = erpButton('Lưu', null, 'bg-indigo-600 text-white px-4 py-2 rounded-lg disabled:opacity-50'); save.type = 'submit';
@@ -747,7 +749,7 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
       }
       const headerDetails=readHeaderDetails();
       if(Object.keys(headerDetails).length)payload.document_details=headerDetails;
-      if (row && table !== 'purchase_headers' && !Object.keys(payload).length) { error.textContent = 'Chưa có thay đổi để lưu.'; return; }
+      if (row && table !== 'purchase_headers' && !Object.keys(payload).length && !form.accountAvatarFile) { error.textContent = 'Chưa có thay đổi để lưu.'; return; }
       erpSaving = true; save.disabled = true; save.textContent = 'Đang lưu...'; error.textContent = '';
       if (makeOrder) makeOrder.disabled = true;
       try {
@@ -764,8 +766,10 @@ async function openErpForm(table, row = null, afterSave = null, purchaseType = '
           if (!response.ok) throw new Error(result.message || `Không lưu được chứng từ và Sales Lines (HTTP ${response.status}).`);
           savedDocument = result;
         }
-        else await erpWrite(table, row?.id, row ? 'PUT' : 'POST', payload);
-        erpEditDialog.close(); notifyCustomer('Đã lưu ' + tableLabels[table].toLowerCase() + '.');
+        else if(row && !Object.keys(payload).length && form.accountAvatarFile)savedDocument={id:row.id};
+        else savedDocument=await erpWrite(table, row?.id, row ? 'PUT' : 'POST', payload);
+        const avatarWarning=await saveAccountAvatar(form,table==='users'?(savedDocument?.id||row?.id):row?.user_id);
+        erpEditDialog.close(); notifyCustomer('Đã lưu ' + tableLabels[table].toLowerCase() + '.'+avatarWarning);
         erpCatalog = null;
         if (afterSave) {
           await ensureErpCatalog();
